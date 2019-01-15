@@ -31,11 +31,11 @@ def build_pure_state_basis(subspace_basis, u_basis):
 def leakage(process, subspace_basis, tlist):
     d = len(subspace_basis)
     I_subspace = sum([qt.ket2dm(ket) for ket in subspace_basis])
-    return [1 - e for e in process(I_subspace/d, tlist, I_subspace)]
+    return [1 - qt.expect(I_subspace, rho) for rho in process(I_subspace/d, tlist)]
 
 def entanglement_fidelity_term(k, process, pure_state_basis, tlist, u_basis, d, T):
     e_ops_k = sum([T[k][j]*u.dag() / d**3 for j,u in enumerate(u_basis)])
-    return process(pure_state_basis[k], tlist, e_ops_k)
+    return [qt.expect(e_ops_k, rho) for rho in process(pure_state_basis[k], tlist)]
 
 def entanglement_fidelity(process, subspace_basis, tlist, progress_bar=False):
     d = len(subspace_basis)
