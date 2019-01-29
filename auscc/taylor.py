@@ -42,7 +42,6 @@ def taylor_analytic(der_generator, x_0, N, tol = 1e-12):
                 k[t] = kt
                 build_k_list(n-kt,k, t+1)
         return k_list
-
     for n in range(N+1):
         k_list = build_k_list(n)
 
@@ -50,10 +49,10 @@ def taylor_analytic(der_generator, x_0, N, tol = 1e-12):
     c_list = []
     for k in k_list:
         c_list.append(multinomial( n=sum(k),k=k) * der_generator(x_0,k) / math.factorial(sum(k)))
+    return [(c,tuple(k)) for c,k in zip(c_list,k_list) if not ((isinstance(c, sp.Number) and c.is_zero) or (isinstance(c, float) and c < tol) )]
 
-    return [(c,tuple(k)) for c,k in zip(c_list,k_list) if abs(c) > tol]
 
-def taylor_sympy(f,x,x0,N):
+def taylor_sympy(f,x,x0,N, tol = 1e-12):
     """Short summary.
 
     Parameters
@@ -77,7 +76,7 @@ def taylor_sympy(f,x,x0,N):
             der = der.diff(xt,kt)
         der_lambda = sp.lambdify(x,der,"numpy")
         return der_lambda(*x0)
-    return taylor_analytic(der_generator, x0, N)
+    return taylor_analytic(der_generator, x0, N, tol)
 
 
 
