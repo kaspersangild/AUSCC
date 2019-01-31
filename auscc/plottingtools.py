@@ -117,7 +117,7 @@ class level_diagram:
         for psi,label in zip(states,state_labels):
             E = sum([qt.expect(oper,psi) for oper in self.ops])
             self.levels.append(level(E,psi,label))
-        degeneracy_tol = (max([lvl.E for lvl in self.levels])-min([lvl.E for lvl in self.levels]))*1e-1
+        degeneracy_tol = (max([lvl.E for lvl in self.levels])-min([lvl.E for lvl in self.levels]))*0.5e-1
         lvls = self.levels.copy()
         while lvls:
             new_subspace = [lvl for lvl in lvls if abs(lvl.E-lvls[0].E)<degeneracy_tol]

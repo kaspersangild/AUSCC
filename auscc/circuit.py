@@ -102,7 +102,7 @@ class circuit:
         sol = [(vi, sol_i) for  vi,sol_i in zip(v,sol_set.args[0])]
         return (sum([qi*vi for qi,vi in zip(q,v)])-lagrangian).subs(sol), q
 
-    def SHO_hamiltonian(self, dims, taylor_order = 4, pd=[]):
+    def SHO_hamiltonian(self, dims, taylor_order = 4):
         x = [self.node_fluxes[key] for key in self.nodes]
         assert len(dims) == len(x)
         H, p = self.legendre_transform(self.kinetic_symbolic()-self.potential_symbolic())
@@ -134,7 +134,6 @@ class circuit:
         ops = []
         param_keys = tuple(self.param_dict.keys())
         sym_params = [self.param_dict[key] for key in param_keys]
-        x_test = [pd[key] for key in param_keys]
         for coeff, k in T:
             c = sp.lambdify(sym_params, coeff*sp.prod([op[0]**ki for op,ki in zip(vars_ops,k) if ki>0]))
             coeffs.append(lambda params, c = c: c(*params))

@@ -22,7 +22,7 @@ def _cost(params, op_gen, target_eigen_states, projectors, P, min_gaps, non_dege
     op = op_gen(params)
     norm_factor = (op**2).tr()
     op_proj = P*op*P
-    if target_eig_state:
+    if target_eigen_states:
         cost += _target_eigen_states_cost(op_proj, projectors)/norm_factor
         cost += _decoupling_cost(op, op_proj, P)/norm_factor
     for gap in min_gaps:
@@ -36,10 +36,10 @@ def _cost(params, op_gen, target_eigen_states, projectors, P, min_gaps, non_dege
         state2 = wstates[2]
         cost += w*_non_degenerate_cost(op, state1, state2)*norm_factor
 
-    return cost
+    return 1*cost
 
 
-def param_optim(op_gen, x0, target_eigen_states = [], min_gaps = [], non_degen_states = [], method = None, bounds = None, constraints = ()):
+def param_optim(op_gen, x0, target_eigen_states = [], min_gaps = [], non_degen_states = [], method = None, bounds = None, constraints = (),tol = None):
     costs = []
     projectors = []
     P = 0
@@ -51,7 +51,7 @@ def param_optim(op_gen, x0, target_eigen_states = [], min_gaps = [], non_degen_s
             projectors.append(psi*psi.dag())
         P = np.sum(projectors)
     args = (op_gen, target_eigen_states, projectors, P, min_gaps, non_degen_states)
-    return sp.optimize.minimize(_cost, x0, args, method = method, bounds=bounds, constraints=constraints)
+    return sp.optimize.minimize(_cost, x0, args, method = method, bounds=bounds, constraints=constraints, tol = tol)
 
 
 if __name__ == '__main__':

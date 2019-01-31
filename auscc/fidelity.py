@@ -42,7 +42,7 @@ def entanglement_fidelity(process, subspace_basis, tlist, progress_bar=False):
     u_basis = build_unitary_basis(subspace_basis)
     pure_state_basis, T = build_pure_state_basis(subspace_basis, u_basis)
     if progress_bar:
-        F_e =np.sum(qt.parallel_map(entanglement_fidelity_term, range(d**2), (process, pure_state_basis, tlist, u_basis, d, T), progress_bar=True), axis=0)
+        F_e = np.sum(qt.parallel_map(entanglement_fidelity_term, range(d**2), (process, pure_state_basis, tlist, u_basis, d, T), progress_bar=True), axis=0)
     else:
         F_e =np.sum(qt.parallel_map(entanglement_fidelity_term, range(d**2), (process, pure_state_basis, tlist, u_basis, d, T)), axis=0)
     return F_e
