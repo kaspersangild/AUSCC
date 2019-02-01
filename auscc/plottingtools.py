@@ -2,6 +2,17 @@ import qutip as qt
 import matplotlib.pyplot as plt
 import numpy as np
 
+def state_label(state):
+    if state.isbra:
+        state = state.dag()
+    data = state.full()
+    label = []
+    while np.any(data,0):
+        ind_max = np.argmax(np.absolute(data),0)
+        label.append('({0:.2E})|{1}>'.format(data[ind_max[0],0], ''.join([str(k) for k in qt.state_index_number(state.dims[0],ind_max[0])])))
+        data[ind_max[0],0] = 0
+    return '+'.join(label)
+
 class level:
     dx = 0.5
     color = 'k'
@@ -48,7 +59,7 @@ class transition:
         for lvl in self.levels:
             lvl.transitions.append(self)
 
-class subspace:
+class _subspace:
     def __init__(self, lvls):
         self.levels = lvls
 
@@ -121,7 +132,7 @@ class level_diagram:
         lvls = self.levels.copy()
         while lvls:
             new_subspace = [lvl for lvl in lvls if abs(lvl.E-lvls[0].E)<degeneracy_tol]
-            self.deg_subspaces.append(subspace(new_subspace))
+            self.deg_subspaces.append(_subspace(new_subspace))
             for lvl in new_subspace:
                 lvls.remove(lvl)
         # -- Building transition instances --

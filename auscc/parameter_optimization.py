@@ -4,67 +4,76 @@ import scipy as sp
 import sympy as sym
 from auscc.operator_generation import operator_generator
 
-def _target_eigen_states_cost(op_proj, projectors):
-    D = np.sum([p*op_proj*p for p in projectors])
-    return ((D-op_proj)**2).tr()
+norm_tol = 1e-12
+class subspace:
+    def project(self, op):
+        return self.subspace_projector*op*self.subspace_projector
 
-def _decoupling_cost(op, op_proj, P):
-    return ((P*op+op*P-2*op_proj)**2).tr()
+    def diagonal(self, op):
+        return np.sum([p*op*p for p in self.state_projectors])
 
-def _minimize_energy_gap_cost(op, state1, state2):
-    return (qt.expect(op,state1)-qt.expect(op,state2))**2
-
-def _non_degenerate_cost(op, state1, state2):
-    return (qt.expect(op,state1)-qt.expect(op,state2))**-2
-
-def _cost(params, op_gen, target_eigen_states, projectors, P, min_gaps, non_degen_states):
-    cost = 0.
-    op = op_gen(params)
-    norm_factor = (op**2).tr()
-    op_proj = P*op*P
-    if target_eigen_states:
-        cost += _target_eigen_states_cost(op_proj, projectors)/norm_factor
-        cost += _decoupling_cost(op, op_proj, P)/norm_factor
-    for gap in min_gaps:
-        w = gap[0]
-        state1 = gap[1]
-        state2 = gap[2]
-        cost += w*_minimize_energy_gap_cost(op,state1,state2)/norm_factor
-    for wstates in non_degen_states:
-        w = wstates[0]
-        state1 = wstates[1]
-        state2 = wstates[2]
-        cost += w*_non_degenerate_cost(op, state1, state2)*norm_factor
-
-    return 1*cost
-
-
-def param_optim(op_gen, x0, target_eigen_states = [], min_gaps = [], non_degen_states = [], method = None, bounds = None, constraints = (),tol = None):
-    costs = []
-    projectors = []
-    P = 0
-    norm_tol = 1e-12
-    if target_eigen_states:
-        for psi in target_eigen_states:
+    def __init__(self, states, diagonal_weight = 1., decoupled_weight = 1., degenerate_weight = 0):
+        assert not (degenerate_weight>0 and diagonal_weight>0)
+        self.weight = 1
+        self.diagonal_weight = diagonal_weight
+        self.decoupled_weight = decoupled_weight
+        self.degenerate_weight = degenerate_weight
+        self.states = states
+        self.state_projectors = []
+        for psi in states:
             assert psi.isket
             assert (psi.norm() - 1)**2 < norm_tol, 'Target eigenstates must be normalized'
-            projectors.append(psi*psi.dag())
-        P = np.sum(projectors)
-    args = (op_gen, target_eigen_states, projectors, P, min_gaps, non_degen_states)
-    return sp.optimize.minimize(_cost, x0, args, method = method, bounds=bounds, constraints=constraints, tol = tol)
+            self.state_projectors.append(psi*psi.dag())
+        self.subspace_projector = np.sum(self.state_projectors)
+        self.dim = len(states)
+
+
+def _diagonal_cost(op_proj, sub, norm_factor):
+    return sub.diagonal_weight*((sub.diagonal(op_proj)-op_proj)**2).tr() / norm_factor
+
+def _decoupling_cost(op, op_proj, sub, norm_factor):
+    ## TO DO
+    # This contribution is not good... Gotta do something where <psi_1|H|psi_2>/dE -> 0, where psi1 is eig in subspace and psi2 is is eig not in subspace. Don't know if this can be done without diagonalizing entire hamiltonian...
+    return sub.decoupled_weight*((sub.subspace_projector*op + op*sub.subspace_projector - 2*op_proj)**2).tr() / norm_factor
+
+def _cost(params, op_gen, subspaces):
+    cost = 0.
+    op = op_gen(params)
+    full_norm = (op**2).tr()
+    for sub in subspaces:
+        op_proj = sub.project(op)
+        cnst_offset = op_proj.tr() / sub.dim
+        if (not sub.diagonal_weight == 0) or (not sub.degenerate_weight == 0):
+            norm_factor = ((op_proj-cnst_offset*sub.subspace_projector)**2).tr()
+        if not sub.diagonal_weight == 0:
+            if norm_factor > 0:
+                cost +=_diagonal_cost(op_proj-cnst_offset, sub, norm_factor)
+        if not sub.decoupled_weight == 0:
+            cost += _decoupling_cost(op, op_proj, sub, full_norm)
+        if not sub.degenerate_weight == 0:
+            cost += sub.degenerate_weight*norm_factor/full_norm
+    return cost
+
+
+def param_optim(op_gen, x0, subspaces = [], min_gaps = [], non_degen_states = [], method = None, bounds = None, constraints = (), tol = None):
+    norm_tol = 1e-12
+    if isinstance(subspaces, subspace):
+        subspaces = [subspaces]
+    args = (op_gen, subspaces)
+    return sp.optimize.minimize(_cost, x0, args, method = method, bounds = bounds, constraints = constraints, tol = tol)
 
 
 if __name__ == '__main__':
-    x,z = sym.symbols('x z')
-    coeffs = [sym.lambdify((x,z), x), sym.lambdify((x,z), z)]
-    ops = [qt.sigmax(), qt.sigmaz()]
+    x, z = sym.symbols('x z')
+    coeffs = [sym.lambdify([x, z], x), sym.lambdify([x, z], z), sym.lambdify([x, z], 1)]
+    ops = [qt.sigmax(), qt.sigmaz(), qt.qeye(2)]
     state0 = qt.ket('0')
     state1 = qt.ket('1')
     op_gen = operator_generator(coeffs, ops)
     target_eig_state = [(state0+state1).unit(), (state0-state1).unit()]
-    res = param_optim(op_gen, np.array([1, 1]), target_eig_state)
-    print(res.x)
-    print(op_gen(res.x))
+    subs = subspace(target_eig_state)
+    res = param_optim(op_gen, np.array([1, 1]), subs)
+    print(res)
     omega1, omega2, jx = sym.symbols('omega1 omega2 jx')
     coeffs = [  sym.lambdify((omega1,omega2,jx),omega1/2),
                 sym.lambdify((omega1,omega2,jx), omega2/2),
@@ -73,12 +82,13 @@ if __name__ == '__main__':
                 qt.tensor(qt.qeye(2), qt.sigmaz()),
                 qt.tensor(qt.sigmax(), qt.sigmax())]
     op_gen = operator_generator(coeffs, ops)
-    states =            [   qt.ket('00'),
-                            qt.ket('11'),
-                            (qt.ket('10')+qt.ket('01')).unit(),
+    states1 =            [   qt.ket('00'),
+                            qt.ket('11')]
+    states2 =            [  (qt.ket('10')+qt.ket('01')).unit(),
                             (qt.ket('10')-qt.ket('01')).unit()]
-    non_degen = [[1e-5, states[2], states[3]]]
-    res = param_optim(op_gen, np.array([10,10,0.1]), states, non_degen_states = non_degen)
+    subs = [subspace(states1, diagonal_weight = 0, decoupled_weight = 1.),
+            subspace(states2, diagonal_weight = 0, decoupled_weight = 1., degenerate_weight = -1)]
+    res = param_optim(op_gen, np.array([1,1,0.1]), subs)
     print(res)
 
     # Transmon C = 1. Driving from 0-1 x = [EJ, A]
@@ -88,6 +98,10 @@ if __name__ == '__main__':
     op_gen = operator_generator(coeffs,ops)
     states = [  (qt.ket('0', 3)+qt.ket('1', 3)).unit(),
                 (qt.ket('0', 3)-qt.ket('1', 3)).unit() ]
-    non_degen = [[1e-4, states[0], states[1]]]
-    res = param_optim(op_gen, [0.1], target_eigen_states = states, non_degen_states = non_degen)
+    subs = subspace(states, diagonal_weight = 1., decoupled_weight = 1., degenerate_weight = -0.1)
+    res = param_optim(op_gen, [0.1], subs)
     print(res)
+    op = op_gen(res.x)
+    E, e_states = op.eigenstates()
+    print(E)
+    print(e_states)
