@@ -4,7 +4,11 @@ import itertools
 
 class operator_decomposition:
     def __str__(self):
-        print(self.decomp)
+        for dec_i in self.decomp:
+            if len(dec_i[0]) == 2 or len(dec_i[0]) == 1:
+                print(dec_i[0])
+                print(dec_i[1])
+                print('\n')
         return ''
 
     def __init__(self, op):

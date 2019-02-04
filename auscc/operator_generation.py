@@ -42,7 +42,7 @@ class operator_generator:
         keys_new = tuple([self.keys[ind] for ind in free_inds])
         coeffs_new = []
         for c in self.coeffs:
-            coeffs_new.append(lambda *x_free, X0 = X0, free_inds = free_inds, c = c : c(_p_full(x_free, free_inds, X0)))
+            coeffs_new.append(lambda x_free, X0 = X0, free_inds = free_inds, c = c : c(_p_full(x_free, free_inds, X0)))
         return operator_generator(coeffs_new, self.ops, keys_new)
 
     def __call__(self, params):
@@ -50,7 +50,7 @@ class operator_generator:
             x = [params[key] for key in self.keys]
         else:
             x = params
-        return np.sum([c(*x)*op for c,op in zip(self.coeffs, self.ops)])
+        return np.sum([c(x)*op for c,op in zip(self.coeffs, self.ops)])
 
     def __init__(self, coeffs, ops, keys = ()):
         # -- Assertions --

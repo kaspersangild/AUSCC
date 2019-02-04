@@ -102,17 +102,19 @@ class level_diagram:
         print(picked_lvl)
 
 
-    def __init__(self, states, ops, state_labels = []):
+    def __init__(self, ops, states = [], state_labels = []):
         # -- Assertions --
         if isinstance(ops, qt.Qobj): # Make ops list if given as Qobj
             self.ops = [ops]
         else:
             self.ops = ops
         assert isinstance(self.ops,list)
+        if not states:
+            states = [qt.ket(s,self.ops[0].dims[0]) for s in qt.state_number_enumerate(self.ops[0].dims[0]) ]
         if state_labels:
             assert len(state_labels) == len(states)
         else:
-            state_labels = ['psi_'+str(k) for k in range(len(states))]
+            state_labels = [state_label(state) for state in states]
         for state in states:
             assert state.isket
 

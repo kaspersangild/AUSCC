@@ -55,7 +55,8 @@ class circuit:
             'Capacitor' : capacitor,
             'C' : capacitor,
             'Josephson junction' : jjunction,
-            'J' : jjunction
+            'J' : jjunction,
+            'JJ' : jjunction
         }
         assert type in switcher.keys(), 'Unknown branch type ' + type
         assert start in self.nodes+['ground'], 'Undefined node'
@@ -64,10 +65,10 @@ class circuit:
         t = self.param_dict['t']
         branch_type = switcher.get(type)
         branch_flux = 0
-        if not self.node_fluxes[end] == 0:
-            branch_flux += self.node_fluxes[end](t)
-        if not self.node_fluxes[start] == 0:
-            branch_flux -= self.node_fluxes[start](t)
+        if not end == 'ground':
+            branch_flux += self.x[self.nodes.index(end)](t)
+        if not start == 'ground':
+            branch_flux -= self.x[self.nodes.index(start)](t)
         self.branches.append(branch_type(start, end, param_key, branch_flux))
         if not param_key in self.param_dict.keys():
             if param_val is None:
@@ -78,12 +79,22 @@ class circuit:
     def remove_branch(self, branch):
         self.branches.remove(branch)
 
+    def def_coord(self, coord, ind = None):
+        if ind == None:
+            ind = self.new_coord_index
+        if not isinstance(coord[0], list):
+            coord = [coord]
+        for i in range(len(coord[0])):
+            coord[0][i] = sp.nsimplify(coord[0][i])
+        self.transformation[ind,:] = coord
+        self.new_coord_index += 1
+
     def potential_symbolic(self, params = {}):
         for key in self.param_dict:
             if key not in params.keys():
                 params[key] = self.param_dict[key]
         t = params['t']
-        replacements=[(self.node_fluxes[key](t),self.node_fluxes[key]) for key in self.nodes]
+        replacements=[(x(t), xnew) for x, xnew in zip(self.x,self.transformation.inv()*sp.Matrix(self.x))]
         return sum([b.energy(params) for b in self.branches if isinstance(b, inductive_branch)]).subs(replacements)
 
     def kinetic_symbolic(self, params = {}):
@@ -91,21 +102,30 @@ class circuit:
             if key not in params.keys():
                 params[key] = self.param_dict[key]
         t = self.param_dict['t']
-        replacements = [ ( sp.diff(self.node_fluxes[key](t), t), self.node_fluxes_der[key] ) for key in self.nodes]
+        replacements = [ ( sp.diff(x(t), t), v ) for x,v in zip(self.x, self.transformation.inv()*sp.Matrix(self.v))]
         return sum([b.energy(params) for b in self.branches if isinstance(b, capacitative_branch)]).subs(replacements)
 
     def legendre_transform(self, lagrangian):
-        v = [self.node_fluxes_der[key] for key in self.nodes]
-        q = [sp.Symbol('q_'+key) for key in self.nodes]
-        eqs = [qi - sp.diff(lagrangian,vi) for qi,vi in zip(q,v)]
-        sol_set = sp.nonlinsolve(eqs, v)
-        sol = [(vi, sol_i) for  vi,sol_i in zip(v,sol_set.args[0])]
-        return (sum([qi*vi for qi,vi in zip(q,v)])-lagrangian).subs(sol), q
+        dLdv = [sp.diff(lagrangian,vi) for vi in self.v]
+        dLdv = [self.C_eps*vi if dLdvi == 0 else dLdvi for dLdvi,vi in zip(dLdv,self.v)]
+        eqs = [sp.simplify(pi - dLdvi) for pi,dLdvi in zip(self.p, dLdv) if not dLdvi == 0]
+        if all([isinstance(b, capacitor) for b in self.branches if isinstance(b,capacitative_branch)]):
+            sol_set = sp.linsolve(eqs, self.v)
+        else:
+            sol_set = sp.nonlinsolve(eqs, self.v)
+        sol = [(vi, sol_i) for  vi,sol_i in zip(self.v,sol_set.args[0])]
+        return (sum([pi*vi for pi,vi in zip(self.p,self.v)])-lagrangian).subs(sol)
 
-    def SHO_hamiltonian(self, dims, taylor_order = 4):
-        x = [self.node_fluxes[key] for key in self.nodes]
+    def SHO_hamiltonian(self, dims, taylor_order = 4, eliminate_coords = None):
+        x = list(self.x)
+        p = list(self.p)
+        H = self.legendre_transform(self.kinetic_symbolic()-self.potential_symbolic())
+        if not eliminate_coords == None:
+            if not isinstance(eliminate_coords, list):
+                eliminate_coords = [eliminate_coords]
+            for ind in eliminate_coords:
+                H = H.subs([(x.pop(ind), 0), (p.pop(ind), 0)])
         assert len(dims) == len(x)
-        H, p = self.legendre_transform(self.kinetic_symbolic()-self.potential_symbolic())
         padded_dims = [d+int(np.floor(taylor_order/2)) for d in dims]
         P = 0
         for state in qt.state_number_enumerate(dims):
@@ -141,17 +161,23 @@ class circuit:
         return au.operator_generator(coeffs, ops, param_keys)
 
     def __str__(self):
-        out = 'Nodes: ' + ', '.join(self.node_keys)+'\n'
+        out = 'Nodes: ' + ', '.join(self.nodes)+'\n'
         for branch in self.branches:
             out += branch.__str__()+'\n'
         return out
 
-    def __init__(self, nodes, branches = [], param_dict = {}):
+    def __init__(self, nodes, transformed_nodes = [], transformation = []):
         assert isinstance(nodes,list)
         self.nodes = nodes
-        self.branches = branches
-        self.param_dict = param_dict
+        self.branches = []
+        self.param_dict = {}
         self.param_dict['t'] = sp.Symbol('t', real = True)
-        self.node_fluxes = dict([(key, sp.Symbol('phi_'+key, real = True)) for key in nodes], real = True)
-        self.node_fluxes_der = dict([(key, sp.Symbol('dot_phi_'+key, real = True)) for key in nodes], real = True)
-        self.node_fluxes['ground'] = 0
+        self.x = sp.symbols('x0:'+str(len(nodes)))
+        self.v = sp.symbols('v0:'+str(len(nodes)))
+        self.p = sp.symbols('p0:'+str(len(nodes)))
+        if transformation:
+            self.transformation = sp.Matrix(transformation)
+        else:
+            self.transformation = sp.eye(len(nodes))
+        self.new_coord_index = 0
+        self.C_eps = sp.Symbol('C_eps')
