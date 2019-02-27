@@ -21,6 +21,7 @@ class level:
         out = 'Level at E = {0:.3E}, {1}'.format(self.E, self.label)
         for t in self.transitions:
             out += '\n\t'+t.__str__()
+        out += '\n'
         return out
 
     def plot(self, x_pos):
@@ -48,7 +49,7 @@ class transition:
         self.artist, = plt.plot(x,y,alpha = self.alpha_shown)
 
     def __str__(self):
-        out = 'J = {0:.3E}, Delta = {1:.3E}'.format(self.strength,np.abs(self.levels[1].E-self.levels[0].E))
+        out = 'J = {0:.3E}, Delta = {1:.3E}, {2} -> {3}'.format(self.strength,np.abs(self.levels[1].E-self.levels[0].E),self.levels[0].label,self.levels[1].label)
         return out
 
     def __init__(self, strength, initial_lvl, final_lvl, one_way = False):
@@ -109,7 +110,7 @@ class level_diagram:
         else:
             self.ops = ops
         assert isinstance(self.ops,list)
-        if not states:
+        if len(states) == 0:
             states = [qt.ket(s,self.ops[0].dims[0]) for s in qt.state_number_enumerate(self.ops[0].dims[0]) ]
         if state_labels:
             assert len(state_labels) == len(states)
@@ -128,7 +129,7 @@ class level_diagram:
         self.transitions = []
 
         for psi,label in zip(states,state_labels):
-            E = sum([qt.expect(oper,psi) for oper in self.ops])
+            E = np.sum([qt.expect(oper,psi) for oper in self.ops])
             self.levels.append(level(E,psi,label))
         degeneracy_tol = (max([lvl.E for lvl in self.levels])-min([lvl.E for lvl in self.levels]))*0.5e-1
         lvls = self.levels.copy()
@@ -145,7 +146,18 @@ class level_diagram:
                 if np.abs(strength)>min_strength:
                     self.transitions.append(transition(strength, self.levels[i], self.levels[j]))
 
-
+def eval_wavefunction(psi, *x, basis = 'momentum'):
+    if basis == 'momentum':
+        # Right now only for 2pi periodic functions
+        basis = []
+        Np = psi.dims[0]
+        for k in np.ndindex(*Np):
+            p = [kn-Npn/2 for kn, Npn in zip(k,Np)]
+            basis.append( np.exp( 1j * sum( [pn * xn for pn, xn in zip(p, x)] ) ) / (np.sqrt(2*np.pi)**len(x) ) )
+    out = np.zeros_like(x[0], dtype=complex)
+    for c, b in zip(psi.full(), basis):
+        out += c*b
+    return out
 
 
 def expect_plot(result, ax = None, title = ''):

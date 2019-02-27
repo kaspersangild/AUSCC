@@ -48,7 +48,7 @@ class capacitor(capacitative_branch):
         self.type_str = 'Capacitor'
 
 class circuit:
-    def add_branch(self, start, end, type, param_key, param_val = None):
+    def add_branch(self, start, end, type, param_key):
         switcher = {
             'Inductor' : inductor,
             'L' : inductor,
@@ -71,10 +71,7 @@ class circuit:
             branch_flux -= self.x[self.nodes.index(start)](t)
         self.branches.append(branch_type(start, end, param_key, branch_flux))
         if not param_key in self.param_dict.keys():
-            if param_val is None:
-                self.param_dict[param_key] = sp.Symbol(param_key)
-            else:
-                self.param_dict[param_key] = param_val
+            self.param_dict[param_key] = sp.Symbol(param_key, real = True)
 
     def remove_branch(self, branch):
         self.branches.remove(branch)
@@ -107,12 +104,14 @@ class circuit:
 
     def legendre_transform(self, lagrangian):
         dLdv = [sp.diff(lagrangian,vi) for vi in self.v]
-        dLdv = [self.C_eps*vi if dLdvi == 0 else dLdvi for dLdvi,vi in zip(dLdv,self.v)]
-        eqs = [sp.simplify(pi - dLdvi) for pi,dLdvi in zip(self.p, dLdv) if not dLdvi == 0]
+        dLdv = [self.param_dict['C_eps']*vi if dLdvi == 0 else dLdvi for dLdvi,vi in zip(dLdv,self.v)]
+        eqs = [sp.expand(pi - dLdvi) for pi,dLdvi in zip(self.p, dLdv) if not dLdvi == 0]
+        print(eqs)
         if all([isinstance(b, capacitor) for b in self.branches if isinstance(b,capacitative_branch)]):
             sol_set = sp.linsolve(eqs, self.v)
         else:
             sol_set = sp.nonlinsolve(eqs, self.v)
+        print(sol_set)
         sol = [(vi, sol_i) for  vi,sol_i in zip(self.v,sol_set.args[0])]
         return (sum([pi*vi for pi,vi in zip(self.p,self.v)])-lagrangian).subs(sol)
 
@@ -172,6 +171,7 @@ class circuit:
         self.branches = []
         self.param_dict = {}
         self.param_dict['t'] = sp.Symbol('t', real = True)
+        self.param_dict['C_eps'] = sp.Symbol('C_eps', real = True)
         self.x = sp.symbols('x0:'+str(len(nodes)))
         self.v = sp.symbols('v0:'+str(len(nodes)))
         self.p = sp.symbols('p0:'+str(len(nodes)))
@@ -180,4 +180,3 @@ class circuit:
         else:
             self.transformation = sp.eye(len(nodes))
         self.new_coord_index = 0
-        self.C_eps = sp.Symbol('C_eps')

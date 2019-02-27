@@ -3,6 +3,26 @@ import numpy as np
 import itertools
 
 class operator_decomposition:
+    def single_mode_eigenstates(self,eigvals = 0):
+        if eigvals == 0:
+            eigvals = self.decomp[0][2].dims
+        e_0 = self.decomp[0][1]
+        E = []
+        S = []
+        for dec in self.decomp:
+            if len(dec[0]) == 1:
+                e,s = dec[1].eigenstates(eigvals = eigvals[dec[0][0]])
+                E.append(e)
+                S.append(s)
+        labels = []
+        full_states = []
+        total_E = []
+        for lab_ind in itertools.product(*[range(d) for d in eigvals]):
+            full_states.append(qt.tensor([s[n] for s,n in zip(S,lab_ind)]))
+            total_E.append(np.sum(e[n]+e_0 for e,n in zip(E, lab_ind)))
+            labels.append(lab_ind)
+        return total_E, full_states, labels
+
     def __str__(self):
         for dec_i in self.decomp:
             if len(dec_i[0]) == 2 or len(dec_i[0]) == 1:

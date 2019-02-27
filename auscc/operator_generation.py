@@ -1,10 +1,21 @@
 import numpy as np
 import qutip as qt
+import sympy as sp
 import dill as pickle
 def _p_full(x_free, free_inds, X0):
     for x,i in zip(x_free, free_inds):
         X0[i] = x
     return X0
+
+class sym_opgen:
+    def __call__(self, x):
+        return np.sum([c(*x)*op for c,op in zip(self.coeffs, self.ops)])
+    def __init__(self, coeffs_expr, ops, symbols):
+        self.coeffs = [sp.lambdify(symbols, expr) for expr in coeffs_expr]
+        self.coeffs_expr = coeffs_expr
+        self.ops = ops
+        self.symbols = symbols
+
 
 class operator_generator:
     """This is a class that can generate a QuTiP operator for different parameters. An instance of the class can be called like instance(params), where params is a list or dictionary containing all the parameter values

@@ -50,5 +50,5 @@ def entanglement_fidelity(process, subspace_basis, tlist, progress_bar=False):
 def average_fidelity(process, subspace_basis,  tlist, progress_bar=False):
     d = len(subspace_basis)
     L = leakage(process, subspace_basis, tlist)
-    F_e = entanglement_fidelity(process, subspace_basis, tlist)
+    F_e = entanglement_fidelity(process, subspace_basis, tlist, progress_bar)
     return [(d*f_e + 1 - l) / (d + 1) for f_e,l in zip(F_e, L)]
