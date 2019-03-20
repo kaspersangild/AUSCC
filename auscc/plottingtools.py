@@ -26,7 +26,7 @@ class level:
 
     def plot(self, x_pos):
         self.x_pos = x_pos
-        self.artist, = plt.plot([x_pos-self.dx, x_pos+self.dx], [self.E, self.E],color = self.color, picker = self.picker_tol)
+        self.artist, = plt.plot([x_pos-0.5*self.dx, x_pos+0.5*self.dx], [self.E, self.E],color = self.color, picker = self.picker_tol)
 
     def __init__(self, E, ket, label = ''):
         self.E = E
@@ -35,15 +35,19 @@ class level:
         self.label = label
 
 class transition:
-    alpha_hidden = 0.1
-    alpha_shown = 1.
     def hide(self):
         self.artist.set_alpha(self.alpha_hidden)
 
     def show(self):
         self.artist.set_alpha(self.alpha_shown)
 
-    def plot(self):
+    def plot(self, min_strength):
+        if abs(self.strength)>min_strength:
+            self.alpha_shown = 1
+            self.alpha_hidden = 0
+        else:
+            self.alpha_shown = 0
+            self.alpha_hidden = 0
         x = [lvl.x_pos for lvl in self.levels]
         y = [lvl.E for lvl in self.levels]
         self.artist, = plt.plot(x,y,alpha = self.alpha_shown)
@@ -77,7 +81,7 @@ class level_diagram:
 
     """
 
-    def plot(self):
+    def plot(self, min_strength = 0):
         ax = self.ax
         plt.ylabel('Energy')
         for sub in self.deg_subspaces:
@@ -88,7 +92,7 @@ class level_diagram:
                 lvl.plot(x+lvl.dx)
                 x += 2*lvl.dx+spacing
         for t in self.transitions:
-            t.plot()
+            t.plot(min_strength)
 
     def on_pick(self,event):
         for lvl in self.levels:
@@ -115,7 +119,7 @@ class level_diagram:
         if state_labels:
             assert len(state_labels) == len(states)
         else:
-            state_labels = [state_label(state) for state in states]
+            state_labels = [str(n) for n in range(len(states))]
         for state in states:
             assert state.isket
 
@@ -129,7 +133,7 @@ class level_diagram:
         self.transitions = []
 
         for psi,label in zip(states,state_labels):
-            E = np.sum([qt.expect(oper,psi) for oper in self.ops])
+            E = qt.expect(self.ops[0],psi)
             self.levels.append(level(E,psi,label))
         degeneracy_tol = (max([lvl.E for lvl in self.levels])-min([lvl.E for lvl in self.levels]))*0.5e-1
         lvls = self.levels.copy()

@@ -45,7 +45,7 @@ def fourier_eval2(F, x, xmin = None, xmax = None): # This is just a function a m
         out += outk
     return out
 
-def quantize_potential_dft(U, xmin = None, xmax = None):
+def quantize_potential_dft_old(U, xmin = None, xmax = None):
     if xmin == None:
         xmin = -np.pi*np.ones(U.ndim)
     if xmax == None:
@@ -68,6 +68,50 @@ def quantize_potential_dft(U, xmin = None, xmax = None):
         ck = UF[k]/np.prod(N)
         ops = [En[kn] for kn,En in zip(k,E)]
         out += ck * qt.tensor(ops)
+    return out, Nq
+
+def quantize_potential_dft(U, xmin = None, xmax = None):
+    if xmin == None:
+        xmin = -np.pi*np.ones(U.ndim)
+    if xmax == None:
+        xmax = np.pi*np.ones(U.ndim)
+    UF = np.fft.fftn(U)
+    N = U.shape
+    s = [2*np.pi*(1-1/Nn)/(xmaxn-xminn) for Nn,xmaxn,xminn in zip(N,xmax,xmin)]
+    theta = [-sn*xminn for sn,xminn in zip(s,xmin)]
+    Nq = [int((Nn-1)/2) if Nn%2 else int(Nn/2) for Nn in N]
+    Ep = []
+    for D in range(len(Nq)):
+        Ep.append(qt.tensor([np.exp(1j*thetan)*qt.qdiags(np.ones(2*Nqn),-1)
+                        if D==d
+                        else qt.qeye(2*Nqn+1)
+                        for d, (thetan,Nqn) in enumerate(zip(theta,Nq))]))
+    I = qt.tensor([qt.qeye(2*Nqn +1) for Nqn in Nq])
+    ops = [I for i in range(len(Nq))]
+    k_last = np.zeros(np.shape(Nq), dtype=int)
+    out = 0
+    for k in np.ndindex(*[Nqn+1 for Nqn in Nq]):
+        k_diff = np.array(list(k))-k_last
+        for d in range(len(Nq)):
+            if not k_diff[d] == 0:
+                if k[d] == 0:
+                    ops[d] = I
+                else:
+                    ops[d] = Ep[d]*ops[d]
+                    if k[d] == N[d]/2:
+                        ops[d] = ops[d] / 2 # Because otherwise nyquist freq is counted double
+        pm_iter = [[1] if ki == 0 else [1,-1] for ki in k]
+        # print(k)
+        for dir in itertools.product(*pm_iter):
+            ck = UF[tuple(np.array(list(dir))*k)]/np.prod(N)
+            out += ck*np.prod([ops[d] if sgn == 1 else ops[d].dag() for d,sgn in enumerate(dir)])
+        k_last = np.array(list(k))
+
+
+
+        # ck = UF[k]/np.prod(N)
+        # ops = [En[kn] for kn,En in zip(k,E)]
+        # out += ck * qt.tensor(ops)
     return out, Nq
 
 def quantize_1D_potential_dft(Un, xmin = None, xmax = None):
@@ -99,7 +143,7 @@ if __name__ == '__main__':
     N =128
     x = np.linspace(-np.pi,np.pi,N)
     dx = np.diff(x)[0]
-    Uc = x**2
+    Uc = 1-np.cos(x)
     Uq, Nq = quantize_potential_dft(Uc)
     Q = qt.charge(Nq[0])
     C = 5
@@ -107,16 +151,21 @@ if __name__ == '__main__':
     E,psi = H.eigenstates()
     p0 = abs(eval_wavefunction(psi[0], x))**2
     p1 = abs(eval_wavefunction(psi[1], x))**2
+    p2 = abs(eval_wavefunction(psi[2], x))**2
     plt.figure()
     plt.plot(x, Uc, color = 'k', linestyle = '-')
     plt.plot(x, E[0]*np.ones_like(x), color = 'k', linestyle = '--')
     plt.plot(x, (E[1]-E[0]) * p0 / (2*np.max(p0)) + E[0], color = 'b')
     plt.plot(x, E[1]*np.ones_like(x), color = 'k', linestyle = '--')
-    plt.plot(x, (E[1]-E[0]) * p1 / (2*np.max(p1)) + E[1], color = 'r')
-
+    plt.plot(x, (E[2]-E[1]) * p1 / (2*np.max(p1)) + E[1], color = 'r')
+    plt.plot(x, E[2]*np.ones_like(x), color = 'k', linestyle = '--')
+    plt.plot(x, (E[3]-E[2]) * p2 / (2*np.max(p2)) + E[2], color = 'g')
+    plt.plot(x, (2*E[1]-E[0])*np.ones_like(x), color = 'k', linestyle = '--', alpha = 0.5)
+    plt.xlabel(r'$\phi$')
+    plt.ylabel(r'$E/E_J$')
 
     # # Fourier fun
-    N = 8
+    N = 16
     x = sp.Symbol('x')
     y = sp.Symbol('y')
     f = sp.lambdify([x, y],x**2+y**2)
@@ -131,10 +180,36 @@ if __name__ == '__main__':
     E0, psi0 = (K+UF).groundstate()
     XX, YY = np.meshgrid(np.linspace(-np.pi, np.pi, 10*N),np.linspace(-np.pi, np.pi, 10*N))
     psix = eval_wavefunction(psi0, XX, YY)
-    print(np.sum(np.abs(psix)**2)*dV)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     ax.contourf(xx, yy, U, zdir='z', offset=-1, cmap=cm.coolwarm)
+    ax.plot_wireframe(XX, YY, np.abs(psix)**2/np.max(np.abs(psix)**2))
+    ax.set_xlabel('x')
+    ax.set_xlim(-np.pi, np.pi)
+    ax.set_ylabel('y')
+    ax.set_ylim(-np.pi, np.pi)
+    ax.set_zlabel('z')
+    ax.set_zlim(-1, 1)
+
+
+    N = 16
+    x = sp.Symbol('x')
+    y = sp.Symbol('y')
+    f = sp.lambdify([x, y],-sp.cos(x)-sp.cos(y))
+    xx,yy = np.meshgrid(np.linspace(-np.pi, np.pi, N),np.linspace(-np.pi, np.pi, N))
+    dV = (2*np.pi/(N-1))**2
+    U = f(xx,yy)
+    UF, Nq = quantize_potential_dft(U)
+    m = 0.25
+    px = qt.tensor(qt.charge(Nq[0]), qt.qeye(2*Nq[1]+1))
+    py = qt.tensor(qt.qeye(2*Nq[0]+1), qt.charge(Nq[1]))
+    K = (px**2+py**2) / (2*m)
+    E0, psi0 = (K+UF).groundstate()
+    XX, YY = np.meshgrid(np.linspace(-np.pi, np.pi, 10*N),np.linspace(-np.pi, np.pi, 10*N))
+    psix = eval_wavefunction(psi0, XX, YY)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.contourf(XX, YY, f(XX,YY), zdir='z', offset=-1, cmap=cm.coolwarm)
     ax.plot_wireframe(XX, YY, np.abs(psix)**2/np.max(np.abs(psix)**2))
     ax.set_xlabel('x')
     ax.set_xlim(-np.pi, np.pi)
