@@ -7,14 +7,47 @@ def _p_full(x_free, free_inds, X0):
         X0[i] = x
     return X0
 
-class sym_opgen:
-    def __call__(self, x):
-        return np.sum([c(*x)*op for c,op in zip(self.coeffs, self.ops)])
-    def __init__(self, coeffs_expr, ops, symbols):
-        self.coeffs = [sp.lambdify(symbols, expr) for expr in coeffs_expr]
-        self.coeffs_expr = coeffs_expr
-        self.ops = ops
-        self.symbols = symbols
+class opgen:
+    def __call__(self, *args):
+        return sum(coeff(*args)*op for coeff,op in self.terms)
+    def __init__(self, terms):
+        self.terms = terms
+
+class symopgen:
+    """This is a class that can be used to express an qutip operator symbolically. It can be used if you have a set op operator with coefficients in the for of symbolic expressions. Then by calling an instance of the class one can evaluate the operator for a given choice of parameters.
+
+    Parameters
+    ----------
+    sym_terms : list
+        Each entry in on the form (sym_coeff,op) where sym_coeff is the coefficient as a sympy expression and op is the assosciated qutip qObj.
+
+    """
+    def __call__(self, args_dict):
+        """Short summary.
+
+        Parameters
+        ----------
+        args_dict : dictionary
+            Dictionary with the symbols as keys and numeric values as values. It replaces the symbolic variable with the numeric value when evaluating the coefficients. If a symbols value is not not specified it is assumed to be zero.
+
+        Returns
+        -------
+        QObj
+            Evaluated operator.
+
+        """
+        args = np.zeros(len(self.symbols))
+        for index, key in enumerate(self.symbols):
+            if key in args_dict.keys():
+                args[index] = args_dict[key]
+        return self.og(*args)
+    def __init__(self, sym_terms):
+        self.sym_terms = sym_terms
+        symbols = set()
+        symbols = symbols.union(*[coeff.free_symbols for coeff,_ in sym_terms])
+        self.symbols = list(symbols)
+        terms = [(sp.lambdify(symbols, sym_coeff), op) for sym_coeff,op in sym_terms]
+        self.og = opgen(terms)
 
 
 class operator_generator:

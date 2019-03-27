@@ -50,7 +50,7 @@ class circuit:
             elif b.type == 'Inductor':
                 U += (b_flux)**2/(2*b.symbol)
             elif b.type == 'Josephson junction':
-                U += b.symbol*sp.cos(b_flux)
+                U -= b.symbol*sp.cos(b_flux)
         K = (sp.Matrix(p).T*C_mat.inv()*sp.Matrix(p))[0,0]/2
         for cord in sorted(ignoreable_coordinates, reverse = True):
             K = K.subs(p[cord], 0)

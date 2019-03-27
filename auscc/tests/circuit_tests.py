@@ -1,15 +1,24 @@
 import auscc as au
 import matplotlib.pyplot as plt
 import sympy as sp
+print('LC oscillator')
+EJ,C,Cg,L = sp.symbols('E_J, C, C_g, L')
+circ = au.circuit()
+circ.add_branch(start=0, end=1, type='Capacitor', symbol = C)
+circ.add_branch(start=0, end=1, type='Inductor', symbol = L)
+print(circ)
+H_og = circ.quantize()
+print(H_og({L: 1, C:1}))
+
+
 print('Simple grounded transmon')
-EJ,C,Cg = sp.symbols('E_J, C, C_g')
 circ = au.circuit()
 circ.add_branch(start=0, end=1, type='Capacitor', symbol = C)
 circ.add_branch(start=0, end=1, type='Josephson Junction', symbol = EJ)
 print(circ)
 H_og = circ.quantize()
-# print(H_gen.keys)
-# print(H_gen({'t':0,EJ:5,C:1, 'C_eps':0}),'\n\n')
+print(H_og({EJ: 1, C:1}))
+
 
 print('ZZ-coupler')
 V = sp.Matrix([[1,-1,0,0],[0,0,1,-1],[1,1,-1,-1],[1,1,1,1]])/2
