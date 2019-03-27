@@ -1,5 +1,6 @@
 import qutip as qt
 import numpy as np
+import warnings
 
 def build_unitary_basis(subspace_basis):
     d = len(subspace_basis)
@@ -45,7 +46,9 @@ def entanglement_fidelity(process, subspace_basis, tlist, progress_bar=False):
         F_e = np.sum(qt.parallel_map(entanglement_fidelity_term, range(d**2), (process, pure_state_basis, tlist, u_basis, d, T), progress_bar=True), axis=0)
     else:
         F_e =np.sum(qt.parallel_map(entanglement_fidelity_term, range(d**2), (process, pure_state_basis, tlist, u_basis, d, T)), axis=0)
-    return F_e
+    if any(np.imag(F_e)>10**-12):
+        warnings.warn('I got a pretty large imaginary number when calculating entanglement fidelity. Are you sure your simulation function is correct?')
+    return np.real(F_e)
 
 def average_fidelity(process, subspace_basis,  tlist, progress_bar=False):
     d = len(subspace_basis)
