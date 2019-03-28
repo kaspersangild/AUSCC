@@ -29,7 +29,10 @@ class circuit:
         x = list(sp.symbols('x1:{}'.format(N+1)))# This may be modified when incorporating external controls...
         p = list(sp.symbols('p1:{}'.format(N+1)))
         node_fluxes = [0] # Ground node
-        x = list(sp.symbols('x1:{}'.format(N+1)))
+        if self.V == None:
+            self.V = sp.eye(N)
+        for n,xn in enumerate(self.V.inv()*sp.Matrix(x)):
+            node_fluxes.append(xn)
         C_mat = sp.zeros(N)
         for b in self.branches:
             b_flux = node_fluxes[b.end]-node_fluxes[b.start] # Her kan man ændre hvis man vil have externe fluxer og lignende ind.
@@ -43,6 +46,10 @@ class circuit:
         x = list(sp.symbols('x1:{}'.format(N+1)))# This may be modified when incorporating external controls...
         p = list(sp.symbols('p1:{}'.format(N+1)))
         node_fluxes = [0] # Ground node
+        if self.V == None:
+            self.V = sp.eye(N)
+        for n,xn in enumerate(self.V.inv()*sp.Matrix(x)):
+            node_fluxes.append(xn)
         U = 0
         for b in self.branches:
             b_flux = node_fluxes[b.end]-node_fluxes[b.start] # Her kan man ændre hvis man vil have externe fluxer og lignende ind.
@@ -132,6 +139,7 @@ class circuit:
         out = 'Circuit with '+str(N)+' node(s)\nBranches:\n'
         for branch in self.branches:
             out += branch.__str__()+'\n'
+        print(self.potential())
         return out
 
     def __init__(self, V = None):
