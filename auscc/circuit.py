@@ -25,6 +25,11 @@ class circuit:
     """
 
     def C_mat(self):
+        N = max(max([b.start, b.end]) for b in self.branches)
+        x = list(sp.symbols('x1:{}'.format(N+1)))# This may be modified when incorporating external controls...
+        p = list(sp.symbols('p1:{}'.format(N+1)))
+        node_fluxes = [0] # Ground node
+        x = list(sp.symbols('x1:{}'.format(N+1)))
         C_mat = sp.zeros(N)
         for b in self.branches:
             b_flux = node_fluxes[b.end]-node_fluxes[b.start] # Her kan man ændre hvis man vil have externe fluxer og lignende ind.
@@ -34,6 +39,10 @@ class circuit:
         return C_mat
 
     def potential(self):
+        N = max(max([b.start, b.end]) for b in self.branches)
+        x = list(sp.symbols('x1:{}'.format(N+1)))# This may be modified when incorporating external controls...
+        p = list(sp.symbols('p1:{}'.format(N+1)))
+        node_fluxes = [0] # Ground node
         U = 0
         for b in self.branches:
             b_flux = node_fluxes[b.end]-node_fluxes[b.start] # Her kan man ændre hvis man vil have externe fluxer og lignende ind.
