@@ -8,7 +8,26 @@ def _p_full(x_free, free_inds, X0):
     return X0
 
 class opgen:
+    """This is a class that can be used to express an qutip operator whith functions. It can be used if you have a set of operator with functions that can produce coefficients. Then by calling an instance of the class one can evaluate the operator for a given choice of parameters.
+    Parameters
+    ----------
+    terms : list
+        List of tuples on the form (coeff, op), where coeff is some callable object that produces the coefficient to the assosciated operater, op.
+    """
     def __call__(self, *args):
+        """Generates the operator with coefficients evaluated using args_dict. The generated operator is the sum of 'terms', with all coefficients evaluated with *args.
+
+        Parameters
+        ----------
+        args : iterable
+            Arguments to pass to the coefficient functions in 'terms'.
+
+        Returns
+        -------
+        QObj
+            Generated operator.
+
+        """
         return sum(coeff(*args)*op for coeff,op in self.terms)
     def __init__(self, terms):
         self.terms = terms
@@ -23,7 +42,7 @@ class symopgen:
 
     """
     def __call__(self, args_dict):
-        """Short summary.
+        """Generates the operator with coefficients evaluated using args_dict. The generated operator is the sum of 'sym_terms', with all symbolic variables evaluated according to 'args_dict'.
 
         Parameters
         ----------
@@ -33,7 +52,7 @@ class symopgen:
         Returns
         -------
         QObj
-            Evaluated operator.
+            Generated operator.
 
         """
         args = np.zeros(len(self.symbols))

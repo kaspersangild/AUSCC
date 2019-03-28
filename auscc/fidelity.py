@@ -29,29 +29,48 @@ def build_pure_state_basis(subspace_basis, u_basis):
             Tinv[j][k] = (u.dag() * qt.ket2dm(ket)).tr()/d
     return ket_basis, np.linalg.inv(Tinv)
 
-def leakage(process, subspace_basis, tlist):
+def leakage(channel, subspace_basis, tlist):
     d = len(subspace_basis)
     I_subspace = sum([qt.ket2dm(ket) for ket in subspace_basis])
-    return [1 - np.real(qt.expect(I_subspace, rho)) for rho in process(I_subspace/d, tlist)]
+    return [1 - np.real(qt.expect(I_subspace, rho)) for rho in channel(I_subspace/d, tlist)]
 
-def entanglement_fidelity_term(k, process, pure_state_basis, tlist, u_basis, d, T):
+def entanglement_fidelity_term(k, channel, pure_state_basis, tlist, u_basis, d, T):
     e_ops_k = sum([T[k][j]*u.dag() / d**3 for j,u in enumerate(u_basis)])
-    return [qt.expect(e_ops_k, rho) for rho in process(pure_state_basis[k], tlist)]
+    return [qt.expect(e_ops_k, rho) for rho in channel(pure_state_basis[k], tlist)]
 
-def entanglement_fidelity(process, subspace_basis, tlist, progress_bar=False):
+def entanglement_fidelity(channel, subspace_basis, tlist, progress_bar=False):
     d = len(subspace_basis)
     u_basis = build_unitary_basis(subspace_basis)
     pure_state_basis, T = build_pure_state_basis(subspace_basis, u_basis)
     if progress_bar:
-        F_e = np.sum(qt.parallel_map(entanglement_fidelity_term, range(d**2), (process, pure_state_basis, tlist, u_basis, d, T), progress_bar=True), axis=0)
+        F_e = np.sum(qt.parallel_map(entanglement_fidelity_term, range(d**2), (channel, pure_state_basis, tlist, u_basis, d, T), progress_bar=True), axis=0)
     else:
-        F_e =np.sum(qt.parallel_map(entanglement_fidelity_term, range(d**2), (process, pure_state_basis, tlist, u_basis, d, T)), axis=0)
+        F_e =np.sum(qt.parallel_map(entanglement_fidelity_term, range(d**2), (channel, pure_state_basis, tlist, u_basis, d, T)), axis=0)
     if any(np.imag(F_e)>10**-12):
         warnings.warn('I got a pretty large imaginary number when calculating entanglement fidelity. Are you sure your simulation function is correct?')
     return np.real(F_e)
 
-def average_fidelity(process, subspace_basis,  tlist, progress_bar=False):
+def average_fidelity(channel, subspace_basis,  tlist, progress_bar=False):
+    """Calculates the average fidelity of a quantum channel.
+
+    Parameters
+    ----------
+    channel : function
+        The quantum channel we wish to find the average fidelity of. It should take (rho,tlist) as inputs and return eps(rho) to each time in tlist, where eps is the channel. If we want to calculate the average fidelity of some gate, U, the assosciated channel is U.dag()*(eps(rho))*U, that is, we let the system evolve (eps), and then apply the inverse gate operation
+    subspace_basis : list
+        List of basis kets, which describes logical subspace. If the channel sends a state out of this subspace it is counted as leakage.
+    tlist : iterable
+        Times at which the average fidelity is calculated.
+    progress_bar : bool
+        Determines if progressbar is shown.
+
+    Returns
+    -------
+    numpy array
+        Average fidelity of channel at times in tlist.
+
+    """
     d = len(subspace_basis)
-    L = leakage(process, subspace_basis, tlist)
-    F_e = entanglement_fidelity(process, subspace_basis, tlist, progress_bar)
+    L = leakage(channel, subspace_basis, tlist)
+    F_e = entanglement_fidelity(channel, subspace_basis, tlist, progress_bar)
     return [(d*f_e + 1 - l) / (d + 1) for f_e,l in zip(F_e, L)]
