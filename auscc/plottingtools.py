@@ -69,15 +69,21 @@ class _subspace:
         self.levels = lvls
 
 class level_diagram:
-    """Plots an interactive level diagram based on H.
-    The energy levels are taken as the diagonal of H, and off-diagonal elemnts are taken to be interaction
+    """Plots an interactive level diagram.
 
     Parameters
     ----------
-    H : type
-        Description of parameter `H`.
-    ops : type
-        Description of parameter `ops`.
+    ops : qobj or list of qobj
+        The operators used to construct the level diagram. The energies are calculated from the diagonal of the first element.
+    states : list
+        List specifying which states to plot.
+    state_labels : list
+        List of strings which will be used to label each state.
+
+    Returns
+    -------
+    type
+        Description of returned object.
 
     """
 

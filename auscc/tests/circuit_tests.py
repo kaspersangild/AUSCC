@@ -1,6 +1,7 @@
 import auscc as au
 import matplotlib.pyplot as plt
 import sympy as sp
+
 print('LC oscillator')
 EJ,C,Cg,L = sp.symbols('E_J, C, C_g, L')
 circ = au.circuit()
@@ -38,6 +39,6 @@ for i in range(1,5):
 # circ.def_coord([1/2,       1/2,        -1/2,       -1/2])
 # circ.def_coord([1,         1,          1,          1])
 print(circ)
-H_og = circ.quantize(ignoreable_coordinates = [3])
+H_og = circ.quantize(ignoreable_coordinates = [4])
 # H_gen = circ.SHO_hamiltonian(dims=[2,2,2], taylor_order = 4, eliminate_coords = [3])
 # print(au.operator_decomposition(H_gen({'t':0,EJ:5,C:1})),'\n\n')

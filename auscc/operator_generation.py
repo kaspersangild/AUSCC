@@ -2,10 +2,32 @@ import numpy as np
 import qutip as qt
 import sympy as sp
 import dill as pickle
+from collections.abc import Iterable
 def _p_full(x_free, free_inds, X0):
     for x,i in zip(x_free, free_inds):
         X0[i] = x
     return X0
+
+def isolate_td_factor(expr, t):
+    td_factor = 1
+    coeff = 1
+    if expr.func == sp.Mul:
+        for factor in expr.args:
+            if t in factor.free_symbols:
+                td_factor *= factor
+            else:
+                coeff *= factor
+    return coeff,td_factor
+
+def sympy2str(expr):
+    safe_imag = sp.Symbol('__I__')
+    expr_str = str(expr.subs(sp.I, safe_imag))
+    expr_str = expr_str.replace('__I__', '1j')
+    blacklisted_chararcters = ["{", "}", "\\", "_"]
+    for b_char in blacklisted_chararcters:
+        expr_str = expr_str.replace(b_char, '')
+    return expr_str
+
 
 class opgen:
     """This is a class that can be used to express an qutip operator whith functions. It can be used if you have a set of operator with functions that can produce coefficients. Then by calling an instance of the class one can evaluate the operator for a given choice of parameters.
@@ -30,7 +52,41 @@ class opgen:
         """
         return sum(coeff(*args)*op for coeff,op in self.terms)
     def __init__(self, terms):
+        if callable(terms[0]):
+            terms = [terms]
         self.terms = terms
+
+class td_opgen:
+
+
+    def __call__(self, *args):
+        """Generates the operator with coefficients evaluated using args_dict. The generated operator is the sum of 'terms', with all coefficients evaluated with *args.
+
+        Parameters
+        ----------
+        args : iterable
+            Arguments to pass to the coefficient functions in 'terms'.
+
+        Returns
+        -------
+        QObj
+            Generated operator.
+
+        """
+        return [self.constant_og(*args)]+[[td_op(*args), td_str] for td_op, td_str in zip(self.td_og, self.td_strings)]
+    def __init__(self, constant_terms, *td_terms):
+        self.constant_og = opgen(constant_terms)
+        self.td_strings = []
+        self.td_og = []
+        for td_T in td_terms:
+            self.td_og.append(opgen(td_T[0]))
+            self.td_strings.append(td_T[1])
+
+
+
+
+
+
 
 class symopgen:
     """This is a class that can be used to express an qutip operator symbolically. It can be used if you have a set op operator with coefficients in the for of symbolic expressions. Then by calling an instance of the class one can evaluate the operator for a given choice of parameters.
@@ -41,6 +97,9 @@ class symopgen:
         Each entry in on the form (sym_coeff,op) where sym_coeff is the coefficient as a sympy expression and op is the assosciated qutip qObj.
 
     """
+
+
+
     def __call__(self, args_dict):
         """Generates the operator with coefficients evaluated using args_dict. The generated operator is the sum of 'sym_terms', with all symbolic variables evaluated according to 'args_dict'.
 
@@ -60,13 +119,69 @@ class symopgen:
             if key in args_dict.keys():
                 args[index] = args_dict[key]
         return self.og(*args)
+
+
     def __init__(self, sym_terms):
-        self.sym_terms = sym_terms
+        if not isinstance(sym_terms[0], Iterable):
+            self.sym_terms = [sym_terms]
+        else:
+            self.sym_terms = sym_terms
+        symbols = set()
+        symbols = symbols.union(*[coeff.free_symbols for coeff,_ in self.sym_terms])
+        self.symbols = list(symbols)
+        if len(self.sym_terms) == 0:
+            self.og = lambda *x: 0
+        else:
+            terms = [(sp.lambdify(symbols, sym_coeff), op) for sym_coeff,op in self.sym_terms]
+            self.og = opgen(terms)
+
+class td_symopgen:
+    def mesolve(self, args_dict, rho0, tlist, **kwargs):
+        H = self(args_dict)
+        mesolve_args = dict((sympy2str(symbol), val) for symbol, val in args_dict.items())
+        return qt.mesolve(H, rho0, tlist, args = mesolve_args, **kwargs)
+    def __call__(self, args_dict):
+        """Generates the operator with coefficients evaluated using args_dict. The generated operator is the sum of 'sym_terms', with all symbolic variables evaluated according to 'args_dict'.
+
+        Parameters
+        ----------
+        args_dict : dictionary
+            Dictionary with the symbols as keys and numeric values as values. It replaces the symbolic variable with the numeric value when evaluating the coefficients. If a symbols value is not not specified it is assumed to be zero.
+
+        Returns
+        -------
+        QObj
+            Generated operator.
+
+        """
+        return [self.cnst_term(args_dict)]+[[og(args_dict), sympy2str(td_factor)] for og,td_factor in self.td_terms]
+
+
+    def __init__(self, sym_terms, t_symbol):
+        if not isinstance(sym_terms[0], Iterable):
+            sym_terms = [sym_terms]
+        else:
+            sym_terms = sym_terms
         symbols = set()
         symbols = symbols.union(*[coeff.free_symbols for coeff,_ in sym_terms])
         self.symbols = list(symbols)
-        terms = [(sp.lambdify(symbols, sym_coeff), op) for sym_coeff,op in sym_terms]
-        self.og = opgen(terms)
+        td_factors = []
+        cnst_term = []
+        td_terms = []
+        for T in sym_terms:
+            coeff,td_factor = isolate_td_factor(T[0],t_symbol)
+            if td_factor == 1:
+                cnst_term.append(T)
+            elif not td_factor in td_factors:
+                td_factors.append(td_factor)
+                td_terms.append([[coeff,T[1]], td_factor])
+            else:
+                for td_term in td_terms:
+                    if td_term[1] == td_factor:
+                        td_term[0].append([coeff, T[1]])
+                        break
+        self.cnst_term = symopgen(cnst_term)
+        self.td_terms = [(symopgen(td_T[0]), td_T[1]) for td_T in td_terms]
 
 
 class operator_generator:
