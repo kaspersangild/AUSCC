@@ -109,7 +109,7 @@ class circuit:
     def kinetic(self, ignoreable_coordinates = []):
         N = max(max([b.start, b.end]) for b in self.branches)
         p = list(sp.symbols('p1:{}'.format(N+1)))
-        C_mat = self.C_mat()
+        C_mat, qg = self.C_mat()
         K = (sp.Matrix(p).T*C_mat.inv()*sp.Matrix(p))[0,0]/2
         for cord in sorted(ignoreable_coordinates, reverse = True):
             if cord == 0:
@@ -174,7 +174,7 @@ class circuit:
         """
         K,p = self.kinetic(ignoreable_coordinates = ignoreable_coordinates)
         U,x = self.potential(ignoreable_coordinates = ignoreable_coordinates)
-        return au.quantize(K, U, p, x, dims = dims, taylor_order = taylor_order, x0 = x0)
+        return au.quantize_SHO(K, U, p, x, dims = dims, taylor_order = taylor_order, x0 = x0)
 
     def __str__(self):
         N = max(max([b.start, b.end]) for b in self.branches)

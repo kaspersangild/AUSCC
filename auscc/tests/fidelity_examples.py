@@ -2,8 +2,6 @@ from auscc.fidelity import average_fidelity, entanglement_fidelity, leakage
 from auscc.transform import transform_state_unitary
 import qutip as qt
 import numpy as np
-
-
 # One qubit simple test unitary basis
 basis = [qt.ket([0],[2]), qt.ket([1],[2])]
 U_target = -1j*qt.sigmax()

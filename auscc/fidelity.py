@@ -50,7 +50,7 @@ def entanglement_fidelity(channel, subspace_basis, tlist, progress_bar=False):
         warnings.warn('I got a pretty large imaginary number when calculating entanglement fidelity. Are you sure your simulation function is correct?')
     return np.real(F_e)
 
-def average_fidelity(channel, subspace_basis,  tlist, progress_bar=False):
+def average_fidelity(channel, subspace_basis,  tlist = None, progress_bar=False):
     """Calculates the average fidelity of a quantum channel.
 
     Parameters
@@ -70,7 +70,29 @@ def average_fidelity(channel, subspace_basis,  tlist, progress_bar=False):
         Average fidelity of channel at times in tlist.
 
     """
+
     d = len(subspace_basis)
     L = leakage(channel, subspace_basis, tlist)
     F_e = entanglement_fidelity(channel, subspace_basis, tlist, progress_bar)
     return [(d*f_e + 1 - l) / (d + 1) for f_e,l in zip(F_e, L)]
+
+def average_fidelity_pedersen(Kraus_ops, U_target = None, P = None):
+    # Ensuring every input is put on correct form
+    if isinstance(Kraus_ops, qt.Qobj):
+        Kraus_ops = [[Kraus_ops]]
+    elif isinstance(Kraus_ops[0], qt.Qobj):
+        Kraus_ops = [Kraus_ops]
+    if U_target == None:
+        U_target = len(Kraus_ops)*[qt.qeye(Kraus_ops[0][0].dims[0])]
+    if isinstance(U_target,qt.Qobj):
+        U_target = len(Kraus_ops)*[U_target]
+    if P == None:
+        P = qt.qeye(Kraus_ops[0][0].dims[0])
+    n_rel = P.tr()
+    F = np.zeros(len(Kraus_ops))
+    # Calculating average fidelity
+    for ind, G_list, U0 in zip(range(len(Kraus_ops)), Kraus_ops, U_target):
+        for G in G_list:
+            M = P*U0.dag()*G*P
+            F[ind] += ( ( M.dag() * M ).tr()+np.abs( M.tr() )**2 ) / ( n_rel * ( n_rel + 1 ) )
+    return F

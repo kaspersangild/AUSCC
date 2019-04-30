@@ -3,7 +3,7 @@ import sympy as sp
 import numpy as np
 import qutip as qt
 
-def quantize(K, U, p, x, dims = [], taylor_order = 4, x0 = None):
+def quantize_SHO(K, U, p, x, dims = [], taylor_order = 4, x0 = None, t_symbol = None):
     """A function that can quantize a sympy hamiltonian. Currently only in SHO/fock basis
 
     Parameters
@@ -45,17 +45,17 @@ def quantize(K, U, p, x, dims = [], taylor_order = 4, x0 = None):
     for coeff,powers in T_K:
         inds = np.nonzero(np.array(powers) == 2)[0]
         if len(inds) == 1:
-            m[inds[0]] = sp.simplify(1/(2*coeff))
+            m[inds[0]] = 1/(2*coeff)
     for coeff,powers in T_U:
         inds = np.nonzero(np.array(powers) == 2)[0]
         if len(inds) == 1:
-            k[inds[0]] = sp.simplify(2*coeff)
+            k[inds[0]] = 2*coeff
 
     # Constructing position and momentum operator
     x_ops = []
     p_ops = []
     padded_dims = [d+int(np.floor(taylor_order/2)) for d in dims]
-    for j,kj,mj,d in zip(range(len(k)),k, m, padded_dims):
+    for j, d in zip(range(len(k)), padded_dims):
         op = [qt.qeye(d) for d in padded_dims]
         op[j] = 1j*(qt.create(d)-qt.destroy(d))/np.sqrt(2)
         p_ops.append(qt.tensor(op))
@@ -80,7 +80,7 @@ def quantize(K, U, p, x, dims = [], taylor_order = 4, x0 = None):
             if pow > 0:
                 coeff *= (kj*mj)**(-pow/4)
                 op *= x_op**pow
-        terms.append((sp.simplify(coeff), P*op*P.dag()))
+        terms.append((coeff, P*op*P.dag()))
 
     # Constructing opgen instance
-    return au.symopgen(sym_terms=terms)
+    return au.td_symopgen(sym_terms = terms, t_symbol = t_symbol)
