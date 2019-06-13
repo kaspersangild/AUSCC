@@ -20,9 +20,9 @@ def quantization_form(expr, initial_expand = True):
     if initial_expand:
         expr = sp.expand(expr)
     if expr.func == sp.Add:
-        expr = sp.Add(*[quantization_form(term,initial_expand= False) for term in expr.args])
+        expr = sp.Add(*[quantization_form(term,initial_expand = False) for term in expr.args])
     if expr.func == sp.Mul:
-        expr = sp.Mul(*[quantization_form(factor,initial_expand= False) for factor in expr.args])
+        expr = sp.Mul(*[quantization_form(factor,initial_expand = False) for factor in expr.args])
     if expr.func == sp.cos:
         expr = sp.expand_trig(expr)
     if expr.func == sp.sin:
@@ -31,6 +31,14 @@ def quantization_form(expr, initial_expand = True):
         expr = sp.expand(expr)
     return expr
 
+def C_mat_coeffs(C_mat):
+    return np.flatten(np.linalg.inv(C_mat)/2)
+
+def dft_quantization_ops(dims):
+    p = []
+    for ind in range(len(dims)):
+        p.append(qt.tensor([qt.charge((d-1)/2) if i == ind else qt.qeye(d) for i,d in enumerate(dims)]))
+    return p
 
 
 class branch:
@@ -46,7 +54,7 @@ class branch:
         self.bias_flux = bias_flux
 
 
-class circuit:
+class Circuit:
     """Class for a superconducting circuit.
     Parameters
     ----------
@@ -84,18 +92,36 @@ class circuit:
         type = switcher[type]
         self.branches.append(branch(start, end, type, symbol, bias_voltage, bias_flux))
 
+    def circuit_symbols(self):
+        circsyms = []
+        for b in self.branches:
+            if not b.symbol in circsyms:
+                circsyms.append(b.symbol)
+        return circsyms
+
+    def control_symbols(self):
+        controlsyms = []
+        for b in self.branches:
+            if not b.bias_voltage in controlsyms:
+                controlsyms.append(b.bias_voltage)
+            if not b.bias_flux in controlsyms:
+                controlsyms.append(b.bias_flux)
+        controlsyms.remove(0)
+        return controlsyms
+
     def C_mat(self):
-        N = max(max([b.start, b.end]) for b in self.branches)
-        x = list(sp.symbols('x1:{}'.format(N+1))) # This may be modified when incorporating external controls...
+        N = max(max([b.start, b.end]) for b in self.branches)+1 # Number of nodes
+        x = list(sp.symbols('x0:{}'.format(N))) # This may be modified when incorporating external controls...
         Vg = list(set([b.bias_voltage for b in self.branches]+[sp.diff(b.bias_flux,self._t) for b in self.branches]))
-        print(Vg)
-        node_voltages = [0] # Ground node
+        node_voltages = [] # Ground node
         if self.V == None:
             self.V = sp.eye(N)
-        for n,xn in enumerate(self.V.inv()*sp.Matrix(x)):
-            node_voltages.append(xn)
-        C_mat11 = sp.zeros(N)
-        C_mat12 = sp.zeros(N, len(Vg))
+        for n,yn in enumerate(self.V.inv()*sp.Matrix(x)):
+            node_voltages.append(yn)
+        C_mat11 = sp.zeros(N-len(self.ignoreable_coordinates))
+        C_mat12 = sp.zeros(N-len(self.ignoreable_coordinates), len(Vg))
+        for cord in sorted(self.ignoreable_coordinates, reverse = True):
+                del x[cord]
         for b in self.branches:
             b_voltage = node_voltages[b.end]-node_voltages[b.start]+b.bias_voltage+sp.diff(b.bias_flux, self._t)
             if b.type == 'Capacitor':
@@ -106,29 +132,24 @@ class circuit:
         qg = C_mat12*sp.Matrix(Vg)
         return C_mat11, qg
 
-    def kinetic(self, ignoreable_coordinates = []):
-        N = max(max([b.start, b.end]) for b in self.branches)
-        p = list(sp.symbols('p1:{}'.format(N+1)))
+    def kinetic(self,subs = []):
+        N = max(max([b.start, b.end]) for b in self.branches)+1
+        p = list(sp.symbols('p0:{}'.format(N)))
+        for cord in sorted(self.ignoreable_coordinates, reverse = True):
+            del p[cord]
         C_mat, qg = self.C_mat()
         K = (sp.Matrix(p).T*C_mat.inv()*sp.Matrix(p))[0,0]/2
-        for cord in sorted(ignoreable_coordinates, reverse = True):
-            if cord == 0:
-                print('NB! Zeroth coordinate is ground and is automatically removed.')
-            else:
-                cord -= 1
-                K = K.subs(p[cord], 0)
-                del p[cord]
-        return K,p
+        return p,K.subs(subs)
 
-    def potential(self,ignoreable_coordinates = []):
+    def potential(self,subs = []):
         tp = sp.Symbol('t\'') # Integration variable
         N = max(max([b.start, b.end]) for b in self.branches)
-        x = list(sp.symbols('x1:{}'.format(N+1)))# This may be modified when incorporating external controls...
+        x = list(sp.symbols('x0:{}'.format(N+1)))# This may be modified when incorporating external controls...
         controls = [b.bias_voltage for b in self.branches if not b.bias_voltage == 0]\
                     +[b.bias_flux for b in self.branches if not b.bias_flux == 0]
-        node_fluxes = [0] # Ground node
+        node_fluxes = []
         if self.V == None:
-            self.V = sp.eye(N)
+            self.V = sp.eye(N+1)
         for n,xn in enumerate(self.V.inv()*sp.Matrix(x)):
             node_fluxes.append(xn)
         U = 0
@@ -141,18 +162,14 @@ class circuit:
             if b.type == 'Inductor':
                 U += (b_flux)**2/(2*b.symbol)
             elif b.type == 'Josephson junction':
-                U -= b.symbol*sp.cos(b_flux)
-        for cord in sorted(ignoreable_coordinates, reverse = True):
-            if cord == 0:
-                print('NB! Zeroth coordinate is ground and is automatically removed.')
-            else:
-                cord -= 1
-                U = U.subs(x[cord-1], 0)
+                U += b.symbol*(1-sp.cos(b_flux))
+        for cord in sorted(self.ignoreable_coordinates, reverse = True):
+                U = U.subs(x[cord], 0)
                 del x[cord]
         U = quantization_form(U)
-        return U,x
+        return x,U.subs(subs)
 
-    def quantize(self, dims = [], taylor_order = 4, x0 = None, ignoreable_coordinates = []):
+    def quantize(self, dims = [], taylor_order = 4, x0 = None):
         """Quantizes the circuit.
 
         Parameters
@@ -163,8 +180,6 @@ class circuit:
             The order to which the taylor expansion of the potential will be carried out
         x0 : list
             list (or numpy array) of floats. The point around which the taylour expansion of the potential is carried out
-        ignoreable_coordinates : list
-            List of integers. Specifies coordinates to be omitted during quantization. Typically CM-like coordinates. These coordinates are then simply set to zero.
 
         Returns
         -------
@@ -172,9 +187,18 @@ class circuit:
             symopgen which can generate the circuit Hamiltonian.
 
         """
-        K,p = self.kinetic(ignoreable_coordinates = ignoreable_coordinates)
-        U,x = self.potential(ignoreable_coordinates = ignoreable_coordinates)
+        p,K = self.kinetic()
+        x,U = self.potential()
         return au.quantize_SHO(K, U, p, x, dims = dims, taylor_order = taylor_order, x0 = x0)
+
+    def build_OG(self, method = 'dft', dims = []):
+        # Kinetic stuff
+        C_mat, qg = self.C_mat()
+        x, U = self.potential()
+        vars_sym = list((set(C_mat.free_symbols) | set(U.free_symbols)) - set(x))
+        if method == 'dft':
+            self.OG = build_OG_dft()
+        return 0
 
     def __str__(self):
         N = max(max([b.start, b.end]) for b in self.branches)
@@ -183,7 +207,7 @@ class circuit:
             out += branch.__str__()+'\n'
         return out
 
-    def __init__(self, V = None):
+    def __init__(self):
         """Short summary.
 
         Parameters
@@ -199,4 +223,5 @@ class circuit:
         """
         self.branches = []
         self._t = sp.Symbol('t', real = True)
-        self.V = V
+        self.V = None
+        self.ignoreable_coordinates = [0]

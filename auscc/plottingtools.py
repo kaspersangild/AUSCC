@@ -149,7 +149,7 @@ class level_diagram:
             for lvl in new_subspace:
                 lvls.remove(lvl)
         # -- Building transition instances --
-        min_strength = 1e-11
+        min_strength = 1e-11*sum([lvl.E**2 for lvl in self.levels])
         for i in range(len(states)-1):
             for j in range(i+1,len(states)):
                 strength = sum(oper.matrix_element(states[i],states[j]) for oper in self.ops)

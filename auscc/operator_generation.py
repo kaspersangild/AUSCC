@@ -28,37 +28,57 @@ def sympy2str(expr):
         expr_str = expr_str.replace(b_char, '')
     return expr_str
 
+def inv_mat_coeffs(mat):
+    np.linalg.inv(mat)
+    return k
 
-class opgen:
-    """This is a class that can be used to express an qutip operator whith functions. It can be used if you have a set of operator with functions that can produce coefficients. Then by calling an instance of the class one can evaluate the operator for a given choice of parameters.
-    Parameters
-    ----------
-    terms : list
-        List of tuples on the form (coeff, op), where coeff is some callable object that produces the coefficient to the assosciated operater, op.
-    """
-    def __call__(self, *args):
-        """Generates the operator with coefficients evaluated using args_dict. The generated operator is the sum of 'terms', with all coefficients evaluated with *args.
-
-        Parameters
+class OG:
+    """Base class for all operator generators. Everything else should essentially just be clever ways of building one of these. It contains method for calling and addition and its attributes are:
         ----------
-        args : iterable
-            Arguments to pass to the coefficient functions in 'terms'.
+        ops : list
+            list of operators.
+        coeff_gen : callable
+            When called it must return a list of coefficients corresponding to ops
+        td_string_gen : callable
+            Optional. Must return a list of strings containing the time dependendent coefficient of each operator in ops.
+    """
+    def __add__(self, other):
+        new_ops = self.ops.copy()+other.ops.copy()
+        new_coeff_gen = lambda *args, **kwargs: self.coeff_gen(*args, **kwargs)+other.coeff_gen(*args, **kwargs)
+        new_td_string_gen = lambda *args, **kwargs: self.td_string_gen(*args, **kwargs)+other.td_string_gen(*args, **kwargs)
+        return OG(ops = new_ops, coeff_gen = new_coeff_gen, td_string_gen = new_td_string_gen)
 
-        Returns
-        -------
-        QObj
-            Generated operator.
+    def __radd__(self, other):
+        if other == 0:
+            return self
+        else:
+            return self.__add__(other)
 
-        """
-        return sum(coeff(*args)*op for coeff,op in self.terms)
-    def __init__(self, terms):
-        if callable(terms[0]):
-            terms = [terms]
-        self.terms = terms
+    def __call__(self, *args, **kwargs):
+        ops = self.ops.copy()
+        coeffs = self.coeff_gen(*args, **kwargs)
+        td_strings = self.td_string_gen(*args, **kwargs)
+        op_cnst = 0
+        while any([s == '' for s in td_strings]):
+            ind = np.argmax([s == '' for s in td_strings])
+            op_cnst += coeffs.pop(ind)*ops.pop(ind)
+            del td_strings[ind]
+        if len(td_strings) == 0:
+            return op_cnst
+        else:
+            if op_cnst == 0:
+                return [[op,s] for s,op in zip(td_strings, ops)]
+            else:
+                return [op_cnst]+[[op,s] for s,op in zip(td_strings, ops)]
+
+    def __init__(self, ops, coeff_gen, td_string_gen = None):
+        if td_string_gen == None:
+            td_string_gen = lambda *args, **kwargs: len(ops)*['']
+        self.ops = ops
+        self.coeff_gen = coeff_gen
+        self.td_string_gen = td_string_gen
 
 class td_opgen:
-
-
     def __call__(self, *args):
         """Generates the operator with coefficients evaluated using args_dict. The generated operator is the sum of 'terms', with all coefficients evaluated with *args.
 
@@ -81,11 +101,6 @@ class td_opgen:
         for td_T in td_terms:
             self.td_og.append(opgen(td_T[0]))
             self.td_strings.append(td_T[1])
-
-
-
-
-
 
 
 class symopgen:

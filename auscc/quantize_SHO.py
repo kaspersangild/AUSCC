@@ -36,8 +36,8 @@ def quantize_SHO(K, U, p, x, dims = [], taylor_order = 4, x0 = None, t_symbol = 
         x0 = np.zeros(len(x))
 
     # Taylor expansion
-    T_U = au.taylor.taylor_sympy(f=U, x=x, x0=x0, N=taylor_order)
-    T_K = au.taylor.taylor_sympy(f=K, x=p, x0=np.zeros(len(p)), N=2)
+    T_U = au.taylor.taylor_sympy(f=U, x=x, x0= x0, N=taylor_order)
+    T_K = au.taylor.taylor_sympy(f=K, x=p, x0= np.zeros(len(p)), N=2)
 
     # Effective mass and "spring constant"
     m = len(x)*[0]
