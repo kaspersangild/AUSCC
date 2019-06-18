@@ -41,7 +41,7 @@ def dft_quantization_ops(dims):
     return p
 
 
-class branch:
+class Branch:
     def __str__(self):
         return '{0:20}{1:10} from {2} to {3}'.format(self.type, str(self.symbol), str(self.start), str(self.end))
 
@@ -61,7 +61,9 @@ class Circuit:
     V : sympy matrix
         Transformation matrix used such that x = V*flux_nodes_vector, where x is the desired coordinates. Must be invertible.
     """
-
+    ####################################################################################################################
+    # Circuit building
+    ####################################################################################################################
     def add_branch(self, start, end, type, symbol,bias_voltage = 0, bias_flux = 0):
         """Adds a branch to the circuit
 
@@ -76,7 +78,7 @@ class Circuit:
         symbol : sympy symbol
             The parameter of the circuit element, i.g. C, for a capacitor where C is some sympy symbol representing the capacitance.
         """
-
+        N_before = 0 if len(self.branches) == 0 else self.number_of_nodes()
         switcher = {
             'Inductor' : 'Inductor',
             'L' : 'Inductor',
@@ -90,68 +92,160 @@ class Circuit:
             'JJunction' : 'Josephson junction'
         }
         type = switcher[type]
-        self.branches.append(branch(start, end, type, symbol, bias_voltage, bias_flux))
+        self.branches.append(Branch(start, end, type, symbol, bias_voltage, bias_flux))
+        if not N_before == self.number_of_nodes():
+            self.reset_coords()
 
+    ##################################################################################################################### Coordinates
+    ####################################################################################################################
+    def number_of_nodes(self):
+        return max(max(b.start, b.end)  for b in self.branches)+1
+
+    def number_of_coords(self):
+        return self.number_of_nodes() - len(self.ignored_coords)
+
+    def ignore_coords(self,*args):
+        new_coords = list(self.ignored_coords)
+        for ind in args:
+            assert isinstance(ind, int), 'all inputs must be integers'
+            if not ind in new_coords:
+                new_coords.append(ind)
+        V = self._V # We don't want to reset the transformation matrix
+        self.reset_coords()
+        self.ignored_coords = tuple(sorted(new_coords))
+        self.V = V
+
+    def use_coords(self,*args):
+        new_coords = list(self.ignored_coords)
+        for ind in args:
+            assert isinstance(ind, int), 'all inputs must be integers'
+            if ind in new_coords:
+                new_coords.remove(ind)
+        V = self._V
+        self.reset_coords()
+        self.ignored_coords = tuple(sorted(new_coords))
+        self.V = V
+
+    def include_ignored_coords(self, vec):
+        N = self.number_of_nodes()
+        out = sp.zeros(N, 1)
+        used_coords = [i for i in range(N) if i not in self.ignored_coords]
+        for vec_ind, ind in zip(vec, used_coords):
+            out[ind] = vec_ind
+        return out
+
+    def transform_coords(self, *args): # This method can definitely be made more flexible and user friendly.
+        N = self.number_of_nodes()
+        assert len(args) == N, 'Inputs must match number of nodes (including ground!)'
+        assert all([len(v) == N for v in args]), 'Length of all inputs must match number of nodes (including ground!)'
+        self.reset_coords()
+        self._V = sp.Matrix([v for v in args])
+
+    def get_V_mat(self):
+        if self._V == None:
+            N = self.number_of_nodes()
+            self._V = sp.eye(N)
+        return self._V
+
+    def get_coord_subscripts(self, return_only_used = True):
+        if self._coord_subscripts == None:
+            N = self.number_of_nodes()
+            self._coord_subscripts = tuple(str(i) for i in range(N))
+        if not return_only_used:
+            return self._coord_subscripts
+        else:
+            return tuple(subscript_i for i,subscript_i in enumerate(self._coord_subscripts) if not i in self.ignored_coords)
+
+    def get_x_vec(self):
+        if self._x == None:
+            self._x = sp.Matrix(sp.symbols([r'x_{'+subs+'}' for subs in self.get_coord_subscripts(return_only_used=True)]))
+        return self._x
+
+    def get_v_vec(self):
+        if self._v == None:
+            self._v = sp.Matrix(sp.symbols([r'v_{'+subs+'}' for subs in self.get_coord_subscripts(return_only_used=True)]))
+        return self._v
+
+    def get_p_vec(self):
+        if self._p == None:
+            self._p = sp.Matrix(sp.symbols([r'p_{'+subs+'}' for subs in self.get_coord_subscripts(return_only_used=True)]))
+        return self._p
+
+    def get_node_x_vec(self):
+        if self._node_x == None:
+            Vinv = self.get_V_mat().inv()
+            x = self.include_ignored_coords(self.get_x_vec())
+            self._node_x = Vinv*x
+        return self._node_x
+
+    def get_node_v_vec(self):
+        if self._node_v == None:
+            Vinv = self.get_V_mat().inv()
+            v = self.include_ignored_coords(self.get_v_vec())
+            self._node_v = Vinv*v
+        return self._node_v
+
+    def reset_coords(self):
+        self.ignored_coords = tuple()
+        self._V = None
+        self._x = None
+        self._v = None
+        self._p = None
+        self._node_x = None
+        self._node_v = None
+        self._node_p = None
+        self._coord_subscripts = None
+
+    ####################################################################################################################
+    # Symbolic manipulation
+    ####################################################################################################################
     def circuit_symbols(self):
         circsyms = []
         for b in self.branches:
-            if not b.symbol in circsyms:
-                circsyms.append(b.symbol)
-        return circsyms
+            for sym in b.symbol.free_symbols:
+                if not sym in circsyms:
+                    circsyms.append(sym)
+        return sp.Matrix(circsyms)
 
     def control_symbols(self):
         controlsyms = []
         for b in self.branches:
-            if not b.bias_voltage in controlsyms:
-                controlsyms.append(b.bias_voltage)
-            if not b.bias_flux in controlsyms:
-                controlsyms.append(b.bias_flux)
-        controlsyms.remove(0)
-        return controlsyms
+            if not b.bias_voltage == 0:
+                for sym in b.bias_voltage.free_symbols:
+                    if not sym in controlsyms:
+                        controlsyms.append(sym)
+            if not b.bias_flux == 0:
+                for sym in b.bias_flux.free_symbols:
+                    if not sym in controlsyms:
+                        controlsyms.append(sym)
+        return sp.Matrix(controlsyms)
 
     def C_mat(self):
-        N = max(max([b.start, b.end]) for b in self.branches)+1 # Number of nodes
-        x = list(sp.symbols('x0:{}'.format(N))) # This may be modified when incorporating external controls...
+        v = self.get_v_vec()
         Vg = list(set([b.bias_voltage for b in self.branches]+[sp.diff(b.bias_flux,self._t) for b in self.branches]))
-        node_voltages = [] # Ground node
-        if self.V == None:
-            self.V = sp.eye(N)
-        for n,yn in enumerate(self.V.inv()*sp.Matrix(x)):
-            node_voltages.append(yn)
-        C_mat11 = sp.zeros(N-len(self.ignoreable_coordinates))
-        C_mat12 = sp.zeros(N-len(self.ignoreable_coordinates), len(Vg))
-        for cord in sorted(self.ignoreable_coordinates, reverse = True):
-                del x[cord]
+        node_voltages = self.get_node_v_vec()
+        C_mat11 = sp.zeros(self.number_of_coords())
+        C_mat12 = sp.zeros(self.number_of_coords(), len(Vg))
         for b in self.branches:
             b_voltage = node_voltages[b.end]-node_voltages[b.start]+b.bias_voltage+sp.diff(b.bias_flux, self._t)
             if b.type == 'Capacitor':
-                v1 = sp.Matrix([b_voltage.coeff(xn) for xn in x]) # Vector with coefficients such that v.T*x_vec = branch flux
-                v2 = sp.Matrix([b_voltage.coeff(Vgn) for Vgn in Vg])
-                C_mat11 += b.symbol*v1*v1.T
-                C_mat12 += b.symbol*v1*v2.T
+                c1 = sp.Matrix([b_voltage.coeff(vn) for vn in v]) # Vector with coefficients such that v1.T*v_vec = branch voltage
+                c2 = sp.Matrix([b_voltage.coeff(Vgn) for Vgn in Vg])
+                C_mat11 += b.symbol*c1*c1.T
+                C_mat12 += b.symbol*c1*c2.T
         qg = C_mat12*sp.Matrix(Vg)
         return C_mat11, qg
 
     def kinetic(self,subs = []):
-        N = max(max([b.start, b.end]) for b in self.branches)+1
-        p = list(sp.symbols('p0:{}'.format(N)))
-        for cord in sorted(self.ignoreable_coordinates, reverse = True):
-            del p[cord]
+        p = self.get_p_vec()
         C_mat, qg = self.C_mat()
-        K = (sp.Matrix(p).T*C_mat.inv()*sp.Matrix(p))[0,0]/2
+        K = (p.T*C_mat.inv()*p/2+p.T*qg)[0,0]
         return p,K.subs(subs)
 
     def potential(self,subs = []):
         tp = sp.Symbol('t\'') # Integration variable
-        N = max(max([b.start, b.end]) for b in self.branches)
-        x = list(sp.symbols('x0:{}'.format(N+1)))# This may be modified when incorporating external controls...
-        controls = [b.bias_voltage for b in self.branches if not b.bias_voltage == 0]\
-                    +[b.bias_flux for b in self.branches if not b.bias_flux == 0]
-        node_fluxes = []
-        if self.V == None:
-            self.V = sp.eye(N+1)
-        for n,xn in enumerate(self.V.inv()*sp.Matrix(x)):
-            node_fluxes.append(xn)
+        x = self.get_x_vec()
+        node_fluxes = self.get_node_x_vec()
         U = 0
         for b in self.branches:
             if b.bias_voltage == 0:
@@ -163,11 +257,45 @@ class Circuit:
                 U += (b_flux)**2/(2*b.symbol)
             elif b.type == 'Josephson junction':
                 U += b.symbol*(1-sp.cos(b_flux))
-        for cord in sorted(self.ignoreable_coordinates, reverse = True):
-                U = U.subs(x[cord], 0)
-                del x[cord]
         U = quantization_form(U)
         return x,U.subs(subs)
+
+    ####################################################################################################################
+    # Quantization
+    ####################################################################################################################
+    def reset_quantization(self):
+        self.quantization_settings = {}
+
+    def set_quantization_method(self, method_list):
+        N = self.number_of_cords
+        if isinstance(method_list,str):
+            method_list = [method_list]
+        assert isinstance(method_list, list), 'Input must be string or list'
+        if len(method_list) == 1:
+            method_list = N*method_list
+        assert len(method_list) == N, 'Invalid length of input'
+        self.quantization_settings['method'] = method_list
+
+    def set_p_ops(self, basis, dims):
+        N = max(max(b.start, b.end)  for b in self.branches) - len(self.ignored_coords)
+        assert len(dims) == N
+        q_ops = []
+        if isinstance(basis, Str):
+            basis = N*[basis]
+        # Building vector with q_n as n'th entry
+        for n in range(N):
+            op = [qt.qeye(d) for d in dims]
+            if basis[n] == 'charge':
+                op[n] = qt.charge((dims[n]-1)/2)
+            q_ops.append(qt.tensor(op))
+        q_ops = np.array(q_ops, dtype = 'O')
+        # Building matrix with q_n*q_m as n,m entry
+        q_ops_mat = np.empty(shape = (N,N), dtype = 'O')
+        for n,qn in enumerate(q_ops):
+            for m,qm in enumerate(q_ops):
+                q_ops_mat[n,m] = q_ops
+        self.q_ops_vec = q_ops
+        self.q_ops_mat = q_ops_mat
 
     def quantize(self, dims = [], taylor_order = 4, x0 = None):
         """Quantizes the circuit.
@@ -223,5 +351,5 @@ class Circuit:
         """
         self.branches = []
         self._t = sp.Symbol('t', real = True)
-        self.V = None
-        self.ignoreable_coordinates = [0]
+        self.reset_coords()
+        self.reset_quantization()

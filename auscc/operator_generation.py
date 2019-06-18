@@ -55,7 +55,7 @@ class OG:
             return self.__add__(other)
 
     def __call__(self, *args, **kwargs):
-        ops = self.ops.copy()
+        ops = self.ops_gen(*args, **kwargs)
         coeffs = self.coeff_gen(*args, **kwargs)
         td_strings = self.td_string_gen(*args, **kwargs)
         op_cnst = 0
@@ -71,10 +71,10 @@ class OG:
             else:
                 return [op_cnst]+[[op,s] for s,op in zip(td_strings, ops)]
 
-    def __init__(self, ops, coeff_gen, td_string_gen = None):
+    def __init__(self, ops_gen, coeff_gen, td_string_gen = None):
         if td_string_gen == None:
             td_string_gen = lambda *args, **kwargs: len(ops)*['']
-        self.ops = ops
+        self.ops_gen = ops_gen
         self.coeff_gen = coeff_gen
         self.td_string_gen = td_string_gen
 
