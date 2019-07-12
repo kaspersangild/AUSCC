@@ -1,5 +1,3 @@
-import qutip as qt
-
 def transform_state_unitary(state, U, inverse = False):
     if inverse:
         if state.isket:

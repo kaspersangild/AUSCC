@@ -7,5 +7,5 @@ setup(name='auscc',
       author='Kasper Sangild Christensen',
       author_email='kaspersangild@gmail.com',
       license='MIT',
-      packages=['auscc'],
+      packages=['auscc','auscc/circuit'],
       zip_safe=False)
