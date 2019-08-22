@@ -1,19 +1,20 @@
-import numpy as np
-import sympy as sp
+from numpy import array, float64
+from numpy.linalg import inv
+from sympy import sympify, Add, Mul, Matrix
 from auscc.circuit.operators import build_operator
 from qutip import qzero
 
 def seperate_expression(expr, op_syms, circ_syms, ctrl_syms):
-    if expr.func == sp.Add:
+    if expr.func == Add:
         out = []
         for term in expr.args:
             out += seperate_expression(term, op_syms, circ_syms, ctrl_syms)
         return out
     else:
-        op_factor = sp.sympify(1.)
-        cnst_factor = sp.sympify(1.)
-        ctrl_factor = sp.sympify(1.)
-        if expr.func == sp.Mul:
+        op_factor = sympify(1.)
+        cnst_factor = sympify(1.)
+        ctrl_factor = sympify(1.)
+        if expr.func == Mul:
             factors = expr.args
         else:
             factors = (expr,)
@@ -53,14 +54,14 @@ class Circuit_evaluator:
         for key in self.ctrl_syms:
             if not key in ctrl_subs.keys():
                 ctrl_subs[key] = 0.
-        C_inv = np.array(self.C_mat.subs(circ_subs)).astype(np.float64)
-        C_inv = sp.Matrix(np.linalg.inv(C_inv))
+        C_inv = array(self.C_mat.subs(circ_subs)).astype(float64)
+        C_inv = Matrix(inv(C_inv))
         K = (self.p.T*C_inv*self.p/2 + self.pg.T*C_inv*self.p)[0,0]
         K_terms = seperate_expression(K, self.op_syms, self.circ_syms, self.ctrl_syms)
         H0 = 0
         H1 = []
         for (circ_fac, op_fac, ctrl_fac) in list(K_terms)+list(self.U_terms):
-            ctrl_fac = sp.sympify(ctrl_fac).subs(ctrl_subs)
+            ctrl_fac = sympify(ctrl_fac).subs(ctrl_subs)
             if ctrl_fac.free_symbols:
                 H1.append([float(circ_fac.subs(circ_subs))*ops_lib(op_fac), str(ctrl_fac)])
             else:
@@ -77,5 +78,5 @@ class Circuit_evaluator:
         self.ctrl_syms = ctrl_syms
         self.U_terms = seperate_expression(U, self.op_syms, self.circ_syms, self.ctrl_syms)
         self.C_mat = C_mat
-        self.pg = sp.Matrix(qg)
-        self.p = sp.Matrix(p_syms)
+        self.pg = Matrix(qg)
+        self.p = Matrix(p_syms)

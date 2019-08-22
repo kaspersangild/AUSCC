@@ -111,10 +111,17 @@ class Circuit:
                                             circ_syms=self.settings.circuit_symbols,
                                             ctrl_syms=self.settings.control_symbols)
 
-    def __call__(self, circ_subs, ctrl_subs = []):
+    def __call__(self, circ_dict = {}, ctrl_dict = {}):
         if self.evaluator == None:
             self.build_evaluator()
-        return self.evaluator.eval_using_subs(ops_lib=self.ops_lib, circ_subs=circ_subs, ctrl_subs = ctrl_subs)
+        if circ_dict:
+            self.settings.set_circ_params(circ_dict)
+        if ctrl_dict:
+            self.settings.set_circ_params(circ_dict)
+        return self.evaluator.eval_using_subs(
+                ops_lib=self.ops_lib,
+                circ_subs=self.settings.circ_dict,
+                ctrl_subs = self.settings.ctrl_dict)
 
     def __init__(self, flux_node_symbols):
         self.settings = Circuit_settings(flux_node_symbols)

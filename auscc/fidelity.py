@@ -1,11 +1,12 @@
-import qutip as qt
-import numpy as np
+from qutip import ket2dm, expect, parallel_map, Qobj, qeye
+from numpy import roll, exp, pi, sqrt, zeros, real, imag, abs, sum
+from numpy.linalg import inv
 import warnings
 
 def build_unitary_basis(subspace_basis):
     d = len(subspace_basis)
-    X = sum([psi1 * psi2.dag() for psi1,psi2 in zip(subspace_basis, np.roll(subspace_basis, 1))])
-    Z = sum([np.exp(2*np.pi*1j*n/d)*psi*psi.dag() for n,psi in enumerate(subspace_basis)])
+    X = sum([psi1 * psi2.dag() for psi1,psi2 in zip(subspace_basis, roll(subspace_basis, 1))])
+    Z = sum([exp(2*pi*1j*n/d)*psi*psi.dag() for n,psi in enumerate(subspace_basis)])
     u_basis = []
     for l in range(d):
         for k in range(d):
@@ -21,34 +22,34 @@ def build_pure_state_basis(subspace_basis, u_basis):
             if k == l:
                 ket_basis.append(subspace_basis[k])
             else:
-                ket_basis.append((subspace_basis[k] + subspace_basis[l])/np.sqrt(2))
-                ket_basis.append((subspace_basis[k] + 1j*subspace_basis[l])/np.sqrt(2))
-    Tinv = np.zeros((d**2,d**2), dtype=complex)
+                ket_basis.append((subspace_basis[k] + subspace_basis[l])/sqrt(2))
+                ket_basis.append((subspace_basis[k] + 1j*subspace_basis[l])/sqrt(2))
+    Tinv = zeros((d**2,d**2), dtype=complex)
     for k,ket in enumerate(ket_basis):
         for j,u in enumerate(u_basis):
-            Tinv[j][k] = (u.dag() * qt.ket2dm(ket)).tr()/d
-    return ket_basis, np.linalg.inv(Tinv)
+            Tinv[j][k] = (u.dag() * ket2dm(ket)).tr()/d
+    return ket_basis, inv(Tinv)
 
 def leakage(channel, subspace_basis, tlist):
     d = len(subspace_basis)
-    I_subspace = sum([qt.ket2dm(ket) for ket in subspace_basis])
-    return [1 - np.real(qt.expect(I_subspace, rho)) for rho in channel(I_subspace/d, tlist)]
+    I_subspace = sum([ket2dm(ket) for ket in subspace_basis])
+    return [1 - real(expect(I_subspace, rho)) for rho in channel(I_subspace/d, tlist)]
 
 def entanglement_fidelity_term(k, channel, pure_state_basis, tlist, u_basis, d, T):
     e_ops_k = sum([T[k][j]*u.dag() / d**3 for j,u in enumerate(u_basis)])
-    return [qt.expect(e_ops_k, rho) for rho in channel(pure_state_basis[k], tlist)]
+    return [expect(e_ops_k, rho) for rho in channel(pure_state_basis[k], tlist)]
 
 def entanglement_fidelity(channel, subspace_basis, tlist, progress_bar=False):
     d = len(subspace_basis)
     u_basis = build_unitary_basis(subspace_basis)
     pure_state_basis, T = build_pure_state_basis(subspace_basis, u_basis)
     if progress_bar:
-        F_e = np.sum(qt.parallel_map(entanglement_fidelity_term, range(d**2), (channel, pure_state_basis, tlist, u_basis, d, T), progress_bar=True), axis=0)
+        F_e = sum(parallel_map(entanglement_fidelity_term, range(d**2), (channel, pure_state_basis, tlist, u_basis, d, T), progress_bar=True), axis=0)
     else:
-        F_e =np.sum(qt.parallel_map(entanglement_fidelity_term, range(d**2), (channel, pure_state_basis, tlist, u_basis, d, T)), axis=0)
-    if any(np.imag(F_e)>10**-12):
+        F_e =sum(parallel_map(entanglement_fidelity_term, range(d**2), (channel, pure_state_basis, tlist, u_basis, d, T)), axis=0)
+    if any(imag(F_e)>10**-12):
         warnings.warn('I got a pretty large imaginary number when calculating entanglement fidelity. Are you sure your simulation function is correct?')
-    return np.real(F_e)
+    return real(F_e)
 
 def average_fidelity(channel, subspace_basis,  tlist = None, progress_bar=False):
     """Calculates the average fidelity of a quantum channel.
@@ -78,21 +79,21 @@ def average_fidelity(channel, subspace_basis,  tlist = None, progress_bar=False)
 
 def average_fidelity_pedersen(Kraus_ops, U_target = None, P = None):
     # Ensuring every input is put on correct form
-    if isinstance(Kraus_ops, qt.Qobj):
+    if isinstance(Kraus_ops, Qobj):
         Kraus_ops = [[Kraus_ops]]
-    elif isinstance(Kraus_ops[0], qt.Qobj):
+    elif isinstance(Kraus_ops[0], Qobj):
         Kraus_ops = [Kraus_ops]
     if U_target == None:
-        U_target = len(Kraus_ops)*[qt.qeye(Kraus_ops[0][0].dims[0])]
-    if isinstance(U_target,qt.Qobj):
+        U_target = len(Kraus_ops)*[qeye(Kraus_ops[0][0].dims[0])]
+    if isinstance(U_target,Qobj):
         U_target = len(Kraus_ops)*[U_target]
     if P == None:
-        P = qt.qeye(Kraus_ops[0][0].dims[0])
+        P = qeye(Kraus_ops[0][0].dims[0])
     n_rel = P.tr()
-    F = np.zeros(len(Kraus_ops))
+    F = zeros(len(Kraus_ops))
     # Calculating average fidelity
     for ind, G_list, U0 in zip(range(len(Kraus_ops)), Kraus_ops, U_target):
         for G in G_list:
             M = P*U0.dag()*G*P
-            F[ind] += ( ( M.dag() * M ).tr()+np.abs( M.tr() )**2 ) / ( n_rel * ( n_rel + 1 ) )
+            F[ind] += ( ( M.dag() * M ).tr()+abs( M.tr() )**2 ) / ( n_rel * ( n_rel + 1 ) )
     return F

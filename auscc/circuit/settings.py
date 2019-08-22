@@ -57,6 +57,20 @@ class Circuit_settings:
         if branches:
             self.circuit_symbols = get_circuit_symbols(branches)
             self.control_symbols = get_control_symbols(branches)
+        for S in self.circuit_symbols:
+            if S not in self.circ_dict:
+                self.circ_dict[S] = 0.
+        for S in self.control_symbols:
+            if S not in self.circ_dict:
+                self.ctrl_dict[S] = 0.
+
+    def set_circ_params(self, modified_params_dict):
+        for k,v in modified_params_dict.items():
+            self.circ_dict[k] = v
+
+    def set_ctrl_params(self, modified_params_dict):
+        for k,v in modified_params_dict.items():
+            self.ctrl_dict[k] = v
 
     def reset_quantization(self):
         self.quantization_method = len(self.coord_syms)*['dft']
@@ -72,4 +86,6 @@ class Circuit_settings:
         self.coord_equations = []
         self.flux_node_expr = dict((fns , fns) for fns in flux_node_syms)
         self.momentum_syms = generate_p_syms(self.coord_syms, self.momentum_symbol)
+        self.circ_dict = dict()
+        self.ctrl_dict = dict()
         self.reset_quantization()

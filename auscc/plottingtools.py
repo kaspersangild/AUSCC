@@ -1,15 +1,15 @@
-import qutip as qt
-import matplotlib.pyplot as plt
-import numpy as np
+from qutip import state_index_number, Qobj, ket, state_number_enumerate, expect
+from matplotlib.pyplot import plot, ylabel, xlabel, figure, axes, sca, rc, legend, title
+from numpy import any, argmax, absolute, abs, imag, real, ndindex, sqrt, exp, zeros_like, pi, linspace, histogram, digitize
 
 def state_label(state):
     if state.isbra:
         state = state.dag()
     data = state.full()
     label = []
-    while np.any(data,0):
-        ind_max = np.argmax(np.absolute(data),0)
-        label.append('({0:.2E})|{1}>'.format(data[ind_max[0],0], ''.join([str(k) for k in qt.state_index_number(state.dims[0],ind_max[0])])))
+    while any(data,0):
+        ind_max = argmax(absolute(data),0)
+        label.append('({0:.2E})|{1}>'.format(data[ind_max[0],0], ''.join([str(k) for k in state_index_number(state.dims[0],ind_max[0])])))
         data[ind_max[0],0] = 0
     return '+'.join(label)
 
@@ -26,7 +26,7 @@ class level:
 
     def plot(self, x_pos):
         self.x_pos = x_pos
-        self.artist, = plt.plot([x_pos-0.5*self.dx, x_pos+0.5*self.dx], [self.E, self.E],color = self.color, picker = self.picker_tol)
+        self.artist, = plot([x_pos-0.5*self.dx, x_pos+0.5*self.dx], [self.E, self.E],color = self.color, picker = self.picker_tol)
 
     def __init__(self, E, ket, label = ''):
         self.E = E
@@ -50,15 +50,15 @@ class transition:
             self.alpha_hidden = 0
         x = [lvl.x_pos for lvl in self.levels]
         y = [lvl.E for lvl in self.levels]
-        self.artist, = plt.plot(x,y,alpha = self.alpha_shown)
+        self.artist, = plot(x,y,alpha = self.alpha_shown)
 
     def __str__(self):
-        out = 'J = {0:.3E}, Delta = {1:.3E}, {2} -> {3}'.format(self.strength,np.abs(self.levels[1].E-self.levels[0].E),self.levels[0].label,self.levels[1].label)
+        out = 'J = {0:.3E}, Delta = {1:.3E}, {2} -> {3}'.format(self.strength,abs(self.levels[1].E-self.levels[0].E),self.levels[0].label,self.levels[1].label)
         return out
 
     def __init__(self, strength, initial_lvl, final_lvl, one_way = False):
-        if np.imag(strength) == 0:
-            strength = np.real(strength)
+        if imag(strength) == 0:
+            strength = real(strength)
         self.strength = strength
         self.levels = [initial_lvl, final_lvl]
         for lvl in self.levels:
@@ -89,7 +89,7 @@ class level_diagram:
 
     def plot(self, min_strength = 0):
         ax = self.ax
-        plt.ylabel('Energy')
+        ylabel('Energy')
         for sub in self.deg_subspaces:
             spacing = 0.25
             L = sum([2*lvl.dx for lvl in sub.levels])+(len(sub.levels)-1)*spacing
@@ -115,13 +115,13 @@ class level_diagram:
 
     def __init__(self, ops, states = [], state_labels = []):
         # -- Assertions --
-        if isinstance(ops, qt.Qobj): # Make ops list if given as Qobj
+        if isinstance(ops, Qobj): # Make ops list if given as Qobj
             self.ops = [ops]
         else:
             self.ops = ops
         assert isinstance(self.ops,list)
         if len(states) == 0:
-            states = [qt.ket(s,self.ops[0].dims[0]) for s in qt.state_number_enumerate(self.ops[0].dims[0]) ]
+            states = [ket(s,self.ops[0].dims[0]) for s in state_number_enumerate(self.ops[0].dims[0]) ]
         if state_labels:
             assert len(state_labels) == len(states)
         else:
@@ -130,8 +130,8 @@ class level_diagram:
             assert state.isket
 
         # -- Initializing figure --
-        self.fig = plt.figure()
-        self.ax = plt.axes()
+        self.fig = figure()
+        self.ax = axes()
         self.fig.canvas.callbacks.connect('pick_event', self.on_pick)
         # -- Building level instances --
         self.levels = []
@@ -139,7 +139,7 @@ class level_diagram:
         self.transitions = []
 
         for psi,label in zip(states,state_labels):
-            E = qt.expect(self.ops[0],psi)
+            E = expect(self.ops[0],psi)
             self.levels.append(level(E,psi,label))
         degeneracy_tol = (max([lvl.E for lvl in self.levels])-min([lvl.E for lvl in self.levels]))*0.5e-1
         lvls = self.levels.copy()
@@ -153,18 +153,43 @@ class level_diagram:
         for i in range(len(states)-1):
             for j in range(i+1,len(states)):
                 strength = sum(oper.matrix_element(states[i],states[j]) for oper in self.ops)
-                if np.abs(strength)>min_strength:
+                if abs(strength)>min_strength:
                     self.transitions.append(transition(strength, self.levels[i], self.levels[j]))
+
+class LevelDiagram:
+    def __init__(self, H0, states, bins = 10):
+        self.H0 = H0
+        self.states = states
+        self.y = []
+        self.E = []
+        self.x = []
+        for s in states:
+            self.E.append(expect(H0, s))
+            self.y.append([self.E[-1],self.E[-1]])
+        h, edges =  histogram(self.E, bins)
+        h_x = []
+        for n in h:
+            x_edges = linspace(0, n, n+1)-n/2
+            xn = []
+            for i in range(n):
+                xn.append([x_edges[i]+0.2,x_edges[i+1]-0.2])
+            h_x.append(xn)
+        for E, bin_ind in zip(self.E, digitize(self.E, edges[1:-1])):
+            self.x.append(h_x[bin_ind].pop(0))
+        self.levels = tuple((x,y) for x,y in zip(self.x, self.y))
+
+
+
 
 def eval_wavefunction(psi, *x, basis = 'momentum'):
     if basis == 'momentum':
         # Right now only for 2pi periodic functions
         basis = []
         Np = psi.dims[0]
-        for k in np.ndindex(*Np):
+        for k in ndindex(*Np):
             p = [kn-Npn/2 for kn, Npn in zip(k,Np)]
-            basis.append( np.exp( 1j * sum( [pn * xn for pn, xn in zip(p, x)] ) ) / (np.sqrt(2*np.pi)**len(x) ) )
-    out = np.zeros_like(x[0], dtype=complex)
+            basis.append( exp( 1j * sum( [pn * xn for pn, xn in zip(p, x)] ) ) / (sqrt(2*pi)**len(x) ) )
+    out = zeros_like(x[0], dtype=complex)
     for c, b in zip(psi.full(), basis):
         out += c*b
     return out
@@ -172,18 +197,18 @@ def eval_wavefunction(psi, *x, basis = 'momentum'):
 
 def expect_plot(result, ax = None, title = ''):
     if ax == None:
-        fig = plt.figure()
-        ax = plt.axes()
-    plt.sca(ax)
+        fig = figure()
+        ax = axes()
+    sca(ax)
     if isinstance(result.expect, dict):
-        plt.rc('text', usetex=True)
+        rc('text', usetex=True)
         for label in result.expect:
             raw_label = r"$"+label+"$"
-            plt.plot(result.times, result.expect[label], label = raw_label)
-        plt.legend()
+            plot(result.times, result.expect[label], label = raw_label)
+        legend()
     else:
         for y in result.expect:
-            plt.plot(result.times, y)
-    plt.title(title)
-    plt.xlabel(r"$ t $")
-    plt.ylabel('Exp. value')
+            plot(result.times, y)
+    title(title)
+    xlabel(r"$ t $")
+    ylabel('Exp. value')
